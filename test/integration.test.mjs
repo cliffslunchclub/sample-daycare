@@ -1,0 +1,68 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import net from 'node:net';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url),{counts,projection,mealsOn}=require('../pb_hooks/domain.js');
+const root=path.resolve(import.meta.dirname,'..');
+test('PocketBase permissions, projections, audit and persisted state',async()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'daycare-test-'));
+ const port=await new Promise(resolve=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p));});});
+ const base=`http://127.0.0.1:${port}`;let logs='';
+ const child=spawn(path.join(root,'.runtime/pocketbase'),['serve',`--http=127.0.0.1:${port}`,`--dir=${dir}`,`--hooksDir=${root}/pb_hooks`,`--migrationsDir=${root}/pb_migrations`],{cwd:root,env:{...process.env,CLC_DEMO:'1',CLC_ADMIN_EMAIL:'clc@example.test',CLC_ADMIN_PASSWORD:'test-password-123'}});child.stdout.on('data',b=>logs+=b);child.stderr.on('data',b=>logs+=b);
+ async function request(url,token,body,method){const r=await fetch(base+url,{method:method||(body?'POST':'GET'),headers:{'Content-Type':'application/json',...(token?{Authorization:token}:{})},body:body?JSON.stringify(body):undefined});const d=await r.json();return {status:r.status,data:d};}
+ async function login(email){const r=await request('/api/collections/users/auth-with-password','',{identity:email,password:'test-password-123'});assert.equal(r.status,200,JSON.stringify(r.data));return r.data.token;}
+ try{
+  let healthy=false;for(let i=0;i<100;i++){try{healthy=(await fetch(base+'/api/health')).ok;}catch{}if(healthy)break;if(child.exitCode!==null)break;await new Promise(r=>setTimeout(r,50));}assert.ok(healthy,logs);
+  const admin=await login('clc@example.test'),garden=await login('garden@example.test'),river=await login('river@example.test'),staff=await login('staff@example.test');
+  const get=t=>request('/api/daycare/state',t);const post=(a,b,t=admin)=>request('/api/daycare/'+a,t,b);
+  assert.equal((await get('')).status,401);
+  const initial=await get(admin);assert.equal(initial.status,200,JSON.stringify(initial.data));const all=initial.data;
+  assert.equal(all.locations.length,2);assert.equal(all.students.length,16);
+  const g=(await get(garden)).data;assert.deepEqual(g.locations.map(l=>l.id),['garden']);assert.ok(g.students.every(s=>s.locationId==='garden'));assert.equal(g.audit.length,0);assert.equal(g.users.length,0);assert.ok(g.students.every(s=>s.versions.every(v=>v.allergy===undefined&&v.instructions===undefined)));
+  assert.deepEqual((await get(river)).data.locations.map(l=>l.id),['river']);
+  assert.notEqual((await request('/api/collections/workspace/records',garden)).status,200);
+  assert.notEqual((await request('/api/collections/users/records',garden)).status,200);
+  assert.notEqual((await request('/api/collections/users/records/'+g.user.id,garden,{role:'super'},'PATCH')).status,200);
+  assert.equal((await post('location',all.locations[0],garden)).status,403);
+  assert.equal((await post('location',all.locations[0],staff)).status,403);
+  assert.equal((await post('codes',all.codes,garden)).status,403);
+  assert.equal((await post('codes',all.codes,staff)).status,403);
+  const s=all.students.find(s=>s.locationId==='garden'&&s.versions[0].billing==='school');const v=s.versions[0];
+  const payload={id:s.id,name:s.name,locationId:s.locationId,...v,effective:'2026-10-01'};
+  assert.equal((await post('student',{...payload,locationId:'river'},garden)).status,403);
+  assert.equal((await post('student',{...payload,billing:'subsidized'},garden)).status,403);
+  const managed=all.students.find(s=>s.locationId==='garden'&&s.versions[0].billing==='clc');
+  assert.equal((await post('student',{...payload,id:managed.id},garden)).status,403);
+  assert.equal((await post('exception',{studentId:managed.id,date:'2026-10-02',code:'standard'},garden)).status,403);
+  const changed=await post('student',{...payload,days:['standard',null,'A','standard','standard']},garden);assert.equal(changed.status,200,JSON.stringify(changed.data));
+  assert.equal((await post('exception',{studentId:s.id,date:'2026-10-02',code:'B'},garden)).status,200);
+  assert.equal((await post('note',{locationId:'river',month:'2026-10',note:'Wrong location'},garden)).status,403);
+  assert.equal((await post('note',{locationId:'garden',month:'2026-10',note:'Please review enrollment'},garden)).status,200);
+  const adj={locationId:'garden',month:'2026-10',units:-2,note:'Enrollment correction'};
+  assert.equal((await post('adjustment',adj,garden)).status,403);
+  assert.equal((await post('adjustment',adj,staff)).status,200);
+  const now=(await get(admin)).data;const a=now.adjustments[0],n=now.notes[0];
+  assert.equal((await post('review-note',{id:n.id,reply:'Adjusted two units',adjustmentId:a.id})).status,200);
+  assert.equal((await post('review-note',{id:n.id,reply:'Reviewed without adjustment',adjustmentId:''})).status,200);
+  assert.equal((await get(admin)).data.notes[0].adjustmentId,null);
+  const l=all.locations[0],p=projection(now.students,l,'2026-10',now.closures,now.adjustments);assert.equal(p.subtotalCents,p.billable*400);assert.equal(p.adjustmentUnits,-2);
+  assert.equal((await post('invoice',{locationId:'garden',month:'2026-10'},garden)).status,403);
+  assert.equal((await post('invoice',{locationId:'garden',month:'2026-10'})).status,200);
+  assert.equal((await post('location',{...l,rateCents:999})).status,200);
+  assert.equal((await get(admin)).data.invoices[0].subtotalCents,p.subtotalCents);
+  assert.equal((await post('adjustment',adj)).status,400);
+  assert.equal((await post('invoice',{locationId:'garden',month:'2026-10',reopen:true,note:'Correct price'})).status,200);
+  assert.equal((await post('adjustment',{...adj,units:-100000})).status,400);
+  assert.equal((await get(admin)).data.adjustments.length,1,'Failed transaction must roll back');
+  assert.equal((await post('closure',{locationId:'garden',date:'2026-10-05',note:'Closed'})).status,200);
+  const final=(await get(admin)).data;assert.equal(mealsOn(final.students,l,'2026-10-05',final.closures).length,0);assert.ok(final.audit.length>=10);
+  assert.equal(counts(Array.from({length:35},()=>({code:'standard',billing:'school'}))).pizzas,12);
+  assert.equal(counts([...Array.from({length:35},()=>({code:'standard',billing:'school'})),{code:'A',billing:'school'},{code:'B',billing:'school'},{code:'V',billing:'subsidized'}]).pizzas,12);
+  assert.equal((await post('user',{name:'New admin',email:'new@example.test',role:'location',locationId:'garden',password:'new-password-123'})).status,200);
+  assert.equal((await post('password',{current:'test-password-123',password:'updated-password-123'},garden)).status,200);
+ }catch(e){console.error(logs.split('\n').filter(l=>!l.includes('pbinstal/')).slice(-10).join('\n'));throw e;}finally{child.kill();await new Promise(resolve=>child.exitCode!==null?resolve():child.once('exit',resolve));rmSync(dir,{recursive:true,force:true});}
+});

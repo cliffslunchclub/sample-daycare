@@ -5,3 +5,5 @@
 
 @page labels {size:letter;margin:.5in .1875in;}
 @media print{.labels-page{page:labels}.labels-page .meal-label{font-size:10px}.labels-page .meal-label strong{font-size:12px}}
+
+.grid2 > *, .card {min-width:0}

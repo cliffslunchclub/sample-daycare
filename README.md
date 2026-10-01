@@ -1,72 +1,124 @@
-# Cliffs Lunch Club — daycare administration
+# Cliffs Lunch Club · Daycare
 
-Version 0.1.0. Administrator-only meal operations for multiple daycare locations, with CHS-inspired cream/green styling and sidebar navigation. This is a working Node.js application with server-side authorization and persistent SQLite storage. It does not change or deploy the CHS application.
+Version **0.2.0** — administrator-only meal operations for multiple daycare locations.
 
-## Run the sample on your Mac
+Rebuilt on the same core stack and local workflow as `sample-elementary-school`: **React 19 + TypeScript + Vite + PocketBase**. This replaces the earlier standalone Node/SQLite implementation. The elementary-school repository is independent.
 
-1. Install Node.js 24 or later.
-2. Download this repository using **Code → Download ZIP**, then extract it.
-3. Open Terminal in the extracted folder and run `npm run demo`, or double-click `Start-Mac.command` (you may need to allow execution in macOS).
-4. Open http://127.0.0.1:3000.
-5. On the first run, Terminal prints a randomly generated sample password. Keep it for subsequent logins. All sample accounts use this initial password:
+## Download and run on a Mac
 
-| Account | Access |
-| --- | --- |
-| clc@example.test | CLC super administrator |
-| garden@example.test | Garden Demo location only |
-| river@example.test | Riverside Demo location only |
+1. On GitHub, choose **Code → Download ZIP** and extract the folder.
+2. Open Terminal in the extracted `sample-daycare` folder.
+3. Run:
 
-All sample students, prices, dietary notes and counts are fictional. The sample database persists in `data/demo/`. Stop with Control+C. To start over, stop the server and rename `data/demo/` to a backup folder, then run the demo again. Do not use sample accounts for real records.
+```bash
+npm start
+```
 
-There are no npm dependencies to install and no separate frontend build step. The implementation uses Node's HTTP, cryptography and SQLite libraries, plus browser-native JavaScript modules. The CHS visual reference is preserved without copying its parent-ordering workflows or backend data.
+Open **http://127.0.0.1:5173**. Requires **Node.js 22.12 or newer**, plus the Mac's `curl` and `unzip` commands. The first start downloads PocketBase 0.28.4 from its official release, verifies its SHA-256 checksum, installs frontend dependencies from the lockfile, creates fictional demo records, and starts both servers. No separate `npm install` is needed. Subsequent starts retain your local changes. Ctrl+C stops both servers. `Start-Mac.command` is an optional double-click launcher.
 
-## Included workflows
+If the school app is already running, stop it first, or use different ports:
 
-- CLC super administrators: all locations, pricing, Small/Large and substitution toggles, A/B/C/V definitions, menus, classrooms and administrator accounts.
-- CLC staff: all-location operations, student management, kitchen output, labels, billing adjustments, billing-note review and audit logs. Staff cannot change super-admin settings or create administrators.
-- Location administrators: their own roster, recurring schedules, dated meal exceptions, counts, projected/saved subtotal and billing requests. They cannot access another location's records, the combined kitchen sheet, or CLC-only dietary instructions.
-- Effective-dated student schedules preserve earlier enrollment when a future schedule is added. Editing a schedule with the same effective date replaces that version and records the change in the audit log.
-- Recurring substitutions, editable any day; no weekday lock. Disabled locations offer standard meals only.
-- Small/Large affects production, not pricing. Each location has one meal rate.
-- Standard bulk pizza meals are divided by three and rounded up **per location**, then combined. Substitutions and separately packed CLC-managed meals are excluded from bulk pizza quantities.
-- School-billed, subsidized and separately CLC-managed billing arrangements. Subsidized and CLC-managed meals remain in production but are excluded from school billable units. Do not also apply a manual credit for an already excluded subsidy.
-- Manual positive/negative whole-meal adjustments, each with its own note and audit trail. CLC alone may apply, edit or remove them.
-- Location-admin billing requests with CLC replies, review status and optional links to adjustments.
-- Monthly projections from actual weekday dates and schedules, adjusted units and location rate. **Subtotal only; no tax calculation.**
-- Save a beginning-of-month subtotal before preparing an invoice. Schedule and price changes do not rewrite saved subtotals. Reopening requires a reason and preserves the old snapshot in the audit log. Saving does not send an invoice or process payment.
-- CLC-managed students are visible to their location as read-only, separately packaged/billed meals. Detailed dietary and packing instructions are CLC-only.
-- Printable CLC weekly kitchen sheet and separate student labels. Kitchen output has full dietary/packing instructions; labels identify the student and direct staff to that sheet.
+```bash
+CLC_PB_PORT=8091 CLC_WEB_PORT=5174 npm start
+```
 
-## Everyday use
+Then open http://127.0.0.1:5174.
 
-1. Under **Settings**, configure each location's rate, classrooms, menu and options.
-2. Add students with a schedule effective date, classroom and weekday selections. CLC can set billing arrangement and private packing instructions.
-3. Use **Meal schedule** for a date-specific à la carte meal. Ordinary absences leave preparation and billing unchanged.
-4. Use **Billing** to choose a month, review location notes, add unit adjustments, and save the monthly subtotal. For a saved month, reopen with a reason before revising adjustments, or apply a correction to the appropriate later month.
-5. Print **Kitchen sheet** for all-location production. Choose the date and location in **Separate labels** for CLC-managed meals.
+### Demo sign-in
 
-Location admins submit billing notes when an enrollment change needs a credit or charge. Such notes do not automatically change billing. Recurring schedule changes can change unsaved projections; saved monthly subtotals remain fixed.
+Terminal displays a randomly generated initial password. Use it with:
 
-## Start an empty installation
+| Email | Access |
+|---|---|
+| `clc@example.test` | CLC super administrator |
+| `staff@example.test` | CLC operations staff |
+| `garden@example.test` | Garden Demo administrator |
+| `river@example.test` | Riverside Demo administrator |
 
-Set `CLC_ADMIN_EMAIL` and a strong `CLC_ADMIN_PASSWORD` (at least 12 characters) in the server environment, then run `npm start`. The first launch creates only the CLC super-admin account; use Settings to add locations and other administrators. Bootstrap credentials are only used when there are no accounts. Passwords are salted/scrypt-hashed; sessions use HttpOnly/SameSite cookies and expire after 12 hours.
+The initial password is kept locally in ignored `.runtime/demo-login.json`. If you change an account password in **My account**, use the new password; the initial credential file is not updated. Demo students, locations, prices, and dietary instructions are fictional. No real school source spreadsheets or student records are included.
 
-| Environment variable | Purpose |
-| --- | --- |
-| CLC_ADMIN_EMAIL | Initial super-admin email |
-| CLC_ADMIN_PASSWORD | Initial super-admin password; never commit it |
-| DATA_DIR | Persistent database directory; defaults to `data/production/` or `data/demo/` |
-| HOST | Listening address, default `127.0.0.1` |
-| PORT | Listening port, default `3000` |
-| PUBLIC_ORIGIN | Exact HTTPS origin when behind a reverse proxy |
-| COOKIE_SECURE | Set to `1` for HTTPS deployments |
+## Workflows
 
-This release requires a long-running Node 24 process and persistent local disk. It is not a static SiteGround upload and has not been deployed to a live domain. For hosting, use an HTTPS reverse proxy, set `PUBLIC_ORIGIN` and `COOKIE_SECURE=1`, keep the database off public/static paths, and configure backups. Stop the server before copying the whole data directory for a consistent backup. Never place live data or credentials in GitHub.
+### Location administrators
 
-## Verification and current limits
+- **Dashboard:** their location's daily and weekly counts, current menu, monthly projection, and pending notes.
+- **Students:** create or edit their school-managed students, classroom, weekly meal schedule, and portion where enabled. An effective date preserves earlier schedules.
+- **Meal schedule:** view the recurring week and add dated enrollment changes or à la carte meals. There is no weekday editing lock. Ordinary absences do not reduce preparation or billing.
+- **Billing:** view the location's subtotal and adjustment entries; submit a note for CLC to review. Notes do not alter the subtotal.
+- **Meals managed by CLC:** read-only receiving information. These meals arrive individually packaged and labeled and are excluded from the school invoice. Detailed dietary/packing instructions are visible only to CLC.
 
-Run `npm test`. Tests cover pizza rounding, effective dates, subsidies, separate production/billing, cross-location access denial, CLC-only permissions, billing-note review, invoice snapshot behavior, persistence and cross-origin mutation denial.
+### CLC staff
 
-This first version has no email delivery, password-reset email, QuickBooks integration, automated invoice sending, or spreadsheet import. Real rosters have not been loaded. Menus are recurring weekday settings, not a dated menu calendar. Browser visual verification was blocked by the execution environment's browser service; review desktop/mobile layout and print a plain-paper label test before operational use. Labels use Letter, 1 × 2⅝-inch stock, at 100%, with browser headers/footers off.
+Access all locations, plus:
 
-Source layout: `server.mjs` (auth, APIs, storage); `domain.mjs` (meal calculations); `public/` (interface); `test/` (regressions). The GitHub repository is the source of truth; local data stays in ignored directories.
+- Signed **+/− meal-unit adjustments**, each with its own note, month, author, timestamp, and audit history. Adjustments affect billing only.
+- Review and respond to location billing notes, optionally linking an adjustment.
+- Save a **monthly subtotal snapshot** at the beginning of the month. Later roster, schedule, and price changes do not change that saved amount. Reopening requires a reason and preserves the prior amount in the audit log. Saving does not send an invoice or collect payment.
+- CLC-managed/subsidized meal arrangements, private dietary instructions, and service closures.
+- Combined **weekly kitchen sheet**, with location, weekday, Small/Large, named substitutions, separate CLC packaging, and pizza totals. Print from the app.
+- **Separate meal labels** for CLC-managed students. Letter 30-up labels: 1 × 2⅝ inches. Print at 100%, headers/footers off, and check on plain paper first.
+- **Audit log** of server-recorded changes.
+
+### CLC super administrator
+
+All staff workflows, plus **Settings**:
+
+- Create locations; configure classrooms, recurring weekday menus, and pizza day.
+- Set one **meal price per location**, regardless of Small/Large portion.
+- Toggle **Small/Large** and **Allow substitutions** separately for each location.
+- Edit the shared **A/B/C/V definitions**. Location administrators only assign allowed options.
+- Create administrator accounts and assign location access. Credentials are shared manually; this app does not email invitations.
+
+## Calculation rules
+
+- Scheduled school-billed meals + manual signed adjustments = billable meal units.
+- Subtotal = billable units × location price. **No tax calculation.**
+- Subsidized and separately CLC-billed meals remain in production counts but are excluded from scheduled school-billable units.
+- Sizes affect preparation, not pricing.
+- Pizza quantity = standard bulk meals ÷ 3, **rounded up per location**, excluding substitutions. Individually packed CLC meals appear in their own production section. Combined pizza total sums location quantities.
+- Closures remove meals from production and unsaved projections. Saved monthly amounts stay unchanged.
+- Dated enrollment changes affect production and unsaved projections; billing-only adjustments do not change food quantities.
+
+## Project structure
+
+```text
+frontend/          React + TypeScript application and Vite configuration
+pb_hooks/          PocketBase authenticated routes and business rules
+pb_migrations/     Database schema and first-run initialization
+scripts/start.mjs  One-command Mac/Linux launcher
+scripts/           Local tooling
+test/              PocketBase integration tests
+```
+
+PocketBase owns authentication, token validation, database storage, and transactional writes. All normal record collection APIs are locked. Authenticated custom routes scope every response and validate all writes on the server; frontend navigation is not the security boundary. Workspace data is currently stored in a private JSON record, with every mutation performed inside a PocketBase transaction. This is a small-operations starter rather than a normalized large-scale data model.
+
+Local data is stored in ignored **`pb_data/`**. Runtime downloads, initial demo credentials, dependencies, and built files are ignored. GitHub stores source code, not operational data. The old application's `data/` directory is not imported or read.
+
+## Checks
+
+After `npm start` has downloaded dependencies and PocketBase:
+
+```bash
+npm test
+npm run build
+```
+
+The integration test starts an isolated PocketBase database and tests real authenticated HTTP requests: cross-location isolation, direct collection access denial, role restrictions, CLC-managed protections, adjustment audit/rollback, notes, snapshots, closures, administrator creation, and password changes. The build runs TypeScript checking and creates `frontend/dist`.
+
+## Empty non-demo workspace
+
+Use a separate database directory and explicitly disable demo seeding before first initialization:
+
+```bash
+CLC_DEMO=0 CLC_DATA_DIR=pb_data_production \
+CLC_ADMIN_EMAIL='your-email@example.com' \
+CLC_ADMIN_PASSWORD='a-long-unique-password' npm start
+```
+
+`pb_data_production/` is ignored automatically. Prefer an absolute data path outside the source checkout for real data. Bootstrap variables are only used to initialize a new database; changing them does not reset existing account passwords. Demo mode also cannot convert an existing production database into a demo or vice versa.
+
+## Deployment status
+
+This release runs locally and is **not deployed**. `npm start` binds both servers to loopback. For hosting, build the frontend and serve `frontend/dist` through PocketBase's `pb_public` directory (or a web server), retaining same-origin `/api` routing. Use a dedicated non-demo database, HTTPS, a managed PocketBase process, and backups. Set `VITE_POCKETBASE_URL` at frontend build time only if the API is on a different origin. Pin/validate PocketBase upgrades before changing the 0.28.4 compatibility baseline.
+
+This release does not integrate QuickBooks, send invoices, collect payments, import the source spreadsheets, or expose parent accounts. Substitution definitions and menus are current configuration; saved invoices retain financial snapshots. Browser print output still requires physical label-stock alignment verification.
