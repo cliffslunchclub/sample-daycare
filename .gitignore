@@ -1,0 +1,23 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Local databases and operational files
+pb_data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+/backups/
+/uploads/
+/imports/
+/private-data/
+Bergenfield*.csv
+
+# Generated files
+node_modules/
+dist/
+.runtime/
+*.log
+.DS_Store
