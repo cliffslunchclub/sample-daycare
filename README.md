@@ -4,6 +4,43 @@ Version **0.2.0** — administrator-only meal operations for multiple daycare lo
 
 Rebuilt on the same core stack and local workflow as `sample-elementary-school`: **React 19 + TypeScript + Vite + PocketBase**. This replaces the earlier standalone Node/SQLite implementation. The elementary-school repository is independent.
 
+## Build specifications
+
+The v0.2.0 rebuild was saved in commit `21a81f2`. Frontend versions below are the resolved versions in `frontend/package-lock.json`; `npm ci` installs that locked dependency set.
+
+| Component | Build specification |
+|---|---|
+| Application | Cliffs Lunch Club Daycare 0.2.0 |
+| UI | React 19.3.0 + React DOM 19.3.0 |
+| Language | TypeScript 5.7.3 with strict checking |
+| Build / development server | Vite 8.3.2 |
+| React compiler plugin | `@vitejs/plugin-react-swc` 4.3.3 |
+| Backend | PocketBase 0.28.4, pinned by the launcher |
+| Frontend API client | PocketBase JavaScript SDK 0.26.9 |
+| Icons | Lucide React 0.479.0 |
+| Styling | Responsive CSS; CHS-style cream/green palette, rounded cards, sidebar navigation |
+| Node.js requirement | 22.12.0 or newer |
+| Launcher platforms | macOS and Linux; Intel/x64 and ARM64 |
+| Local web address | http://127.0.0.1:5173 |
+| Local API address | http://127.0.0.1:8090 |
+| Production frontend output | `frontend/dist/` |
+
+The frontend uses PocketBase password authentication and sends authenticated requests to `/api/daycare/*`. In local development, Vite proxies `/api` to PocketBase. PocketBase JavaScript hooks enforce roles, location access, billing rules, and transactional audit updates.
+
+PocketBase uses its own SQLite-backed database. The rebuild replaces the previous custom Node HTTP server and direct `node:sqlite` implementation; it does not remove SQLite from PocketBase itself. This release is a fresh application build, with no automatic import from the old database.
+
+## Commands
+
+Run these from the repository's top-level folder:
+
+| Command | Purpose |
+|---|---|
+| `npm start` | Initialize the local workspace as needed, then start PocketBase and Vite |
+| `npm test` | Run isolated PocketBase integration checks |
+| `npm run build` | Run TypeScript checks and produce the frontend build |
+
+Use `npm start` for this version. The old `npm run demo` command and port 3000 no longer apply.
+
 ## Download and run on a Mac
 
 1. On GitHub, choose **Code → Download ZIP** and extract the folder.
@@ -86,7 +123,6 @@ frontend/          React + TypeScript application and Vite configuration
 pb_hooks/          PocketBase authenticated routes and business rules
 pb_migrations/     Database schema and first-run initialization
 scripts/start.mjs  One-command Mac/Linux launcher
-scripts/           Local tooling
 test/              PocketBase integration tests
 ```
 
@@ -94,7 +130,10 @@ PocketBase owns authentication, token validation, database storage, and transact
 
 Local data is stored in ignored **`pb_data/`**. Runtime downloads, initial demo credentials, dependencies, and built files are ignored. GitHub stores source code, not operational data. The old application's `data/` directory is not imported or read.
 
-## Checks
+## Verification
+
+The v0.2.0 production build, PocketBase integration checks, and Chromium workflow checks passed. Desktop and mobile layouts were visually reviewed. See [VALIDATION.md](VALIDATION.md) for the tested workflows and remaining verification limits, including Mac execution and physical label alignment.
+
 
 After `npm start` has downloaded dependencies and PocketBase:
 
@@ -104,6 +143,20 @@ npm run build
 ```
 
 The integration test starts an isolated PocketBase database and tests real authenticated HTTP requests: cross-location isolation, direct collection access denial, role restrictions, CLC-managed protections, adjustment audit/rollback, notes, snapshots, closures, administrator creation, and password changes. The build runs TypeScript checking and creates `frontend/dist`.
+
+## Configuration
+
+| Variable | Default / behavior |
+|---|---|
+| `CLC_PB_PORT` | `8090`; local PocketBase port |
+| `CLC_WEB_PORT` | `5173`; local Vite port |
+| `CLC_DATA_DIR` | `pb_data`; database directory |
+| `CLC_DEMO` | Demo seeding enabled unless explicitly set to `0`; only affects first initialization |
+| `CLC_ADMIN_EMAIL` | First administrator email; demo default is `clc@example.test` |
+| `CLC_ADMIN_PASSWORD` | First administrator password; generated locally for a demo, required for a new non-demo workspace |
+| `VITE_POCKETBASE_URL` | Blank for same-origin API access; optional frontend build-time override |
+
+The launcher supplies `CLC_PB_URL` to Vite's development proxy from the selected PocketBase port. Use `CLC_PB_PORT` to change that port when running `npm start`.
 
 ## Empty non-demo workspace
 
