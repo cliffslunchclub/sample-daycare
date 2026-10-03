@@ -1,1 +1,0 @@
-{"name":"clc-daycare","version":"0.2.0","private":true,"scripts":{"start":"node scripts/start.mjs","build":"npm --prefix frontend run build","test":"node --test test/*.test.mjs"},"engines":{"node":">=22.12.0"}}
