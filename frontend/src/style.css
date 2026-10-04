@@ -29,3 +29,5 @@
 .calendar-grid{grid-template-columns:repeat(5,minmax(150px,1fr));min-width:800px}.calendar-panel{overflow-x:auto}.calendar-head{display:block!important}.outside-month{background:#eceeeb;color:#8a918b}.outside-month .date-label,.outside-month .date-label span{color:#8a918b}
 
 .menu-pdf-frame{margin:1.5rem 0 2rem;padding:1.25rem;background:#fff;border:1px solid var(--line);border-radius:16px}.menu-pdf-frame .menu-pdf{border-radius:8px}@media(max-width:640px){.menu-pdf-frame{margin:1rem 0 1.5rem;padding:.65rem}}
+
+.weekly-summary,.weekly-summary *{color:#000!important}.weekly-summary .summary-overview thead th{background:#e9ece8!important}@media print{.weekly-summary,.weekly-summary *{color:#000!important}.weekly-summary .summary-overview thead th{background:#e9ece8!important}}
