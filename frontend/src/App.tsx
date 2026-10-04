@@ -1,6 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { pb } from './api';
-import { menuExportHtml, printMenuHtml } from './menuExport';
+import { menuExportHtml, menuExportDocx, menuFilename, printMenuHtml } from './menuExport';
 import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName } from './operations';
 
 type Row = Record<string, any>;
@@ -206,8 +206,8 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const locStudents = students.filter((s) => selected === 'all' ? true : s.daycare === selected);
   const selectableDaycare = selected === 'all' ? null : current;
   const operationsAvailable = isClc || Boolean(current?.operations_enabled);
-  const nav: [Tab, string][] = operationsAvailable ? [['students', 'Students & classrooms']] : [];
-  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['users', 'School admins'], ['locations', 'Daycares']); }
+  const nav: [Tab, string][] = operationsAvailable ? [['students', 'Students & Classrooms']] : [];
+  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
@@ -234,7 +234,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
             <select value={subCode} onChange={(e) => setSubCode(e.target.value)}>{['A', 'B', 'C', 'V'].map((code) => <option key={code} value={code}>{code} — {current[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</option>)}</select>
             <label className="compact-check"><input type="checkbox" checked={pizzaSub} onChange={(e) => setPizzaSub(e.target.checked)} /> Friday pizza substitution</label><button className="primary">Add recurring</button>
           </form>}
-          <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && s.recurring).map((s) => <div className="list-row" key={s.id}><span>{s.weekday} · {shortStudentName(locStudents.find((kid) => kid.id === s.student)?.name || 'Student')}:<strong className="substitution-code">{s.code}</strong></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
+          <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && s.recurring).map((s) => <div className="list-row" key={s.id}><span>{s.weekday} · {shortStudentName(locStudents.find((kid) => kid.id === s.student)?.name || 'Student')}: <strong className="substitution-code">{s.code}</strong></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
         </div>}
 </section>}
       {tab === 'summary' && isClc && <section><PageTitle title="Weekly summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /></section>}
@@ -264,14 +264,14 @@ function CountSettings({ school, onRefresh, error }: { school: Daycare; onRefres
   const [managed, setManaged] = useState(school.clc_managed_counts || {});
   const [saving, setSaving] = useState(false);
   return <form className="panel count-settings" onSubmit={async (e) => { e.preventDefault(); setSaving(true); try { await pb.collection('daycares').update(school.id, { count_mode: mode, baseline_counts: counts, clc_managed_counts: managed }); await onRefresh(); } catch (err) { error(message(err)); } finally { setSaving(false); } }}>
-    <h2>{school.name} count settings</h2><label>Count method<select value={mode} onChange={(e) => setMode(e.target.value as 'roster' | 'manual')}><option value="roster">Students and classrooms</option><option value="manual">Manual weekday totals</option></select></label>
+    <h2>{school.name} count settings</h2><label>Count method<select value={mode} onChange={(e) => setMode(e.target.value as 'roster' | 'manual')}><option value="roster">Students and Classrooms</option><option value="manual">Manual weekday totals</option></select></label>
     <p className="muted small">Weekday totals repeat each week. Allergy students are handled directly by CLC and shown separately from school-managed students; both are included in lunch totals. Switching methods keeps the existing roster and manual totals.</p>
     <div className="weekday-counts">{weekdays.map((day) => <div key={day}><b>{day}</b>{mode === 'manual' && <label>School students<input type="number" required min="0" max="10000" step="1" value={counts[day] || 0} onChange={(e) => setCounts({ ...counts, [day]: Number(e.target.value) })} /></label>}{mode === 'manual' && <label>Allergies<input type="number" required min="0" max="10000" step="1" value={managed[day] || 0} onChange={(e) => setManaged({ ...managed, [day]: Number(e.target.value) })} /></label>}</div>)}</div><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save count settings'}</button>
   </form>;
 }
 
 function SubstitutionNames({ rows, students }: { rows: Row[]; students: Student[] }) {
-  return <>{rows.map((r, i) => <span className="summary-substitution" key={r.id}>{i > 0 && ' - '}{shortStudentName(students.find((student) => student.id === r.student)?.name || 'Student')}:<strong className="substitution-code">{r.code}</strong></span>)}</>;
+  return <>{rows.map((r, i) => <span className="summary-substitution" key={r.id}>{i > 0 && ' - '}{shortStudentName(students.find((student) => student.id === r.student)?.name || 'Student')}: <strong className="substitution-code">{r.code}</strong></span>)}</>;
 }
 
 function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; students: Student[]; subs: Row[] }) {
@@ -283,7 +283,7 @@ function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; st
     return { day, roster, replacements, total, managed, pizza: day === 'Friday' ? Math.ceil(total / 3) : 0 };
   }) }));
   return <div className="weekly-summary"><h2>Cliffs Lunch Club — Weekly Kitchen Summary</h2>
-    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{data.reduce((n, s) => n + s.days[i].total, 0)} lunches</strong>{day === 'Friday' && <div>Pizza: {data.reduce((n, s) => n + s.days[i].pizza, 0)}</div>}</td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b>{school.sizes_enabled && school.count_mode === 'roster' && <div>{d.total} lunches</div>}<div>{school.sizes_enabled && school.count_mode === 'roster' ? `${d.roster.filter((s) => s.size === 'large' && !d.replacements.some((r) => r.student === s.id)).length} Large + ${d.roster.filter((s) => s.size === 'small' && !d.replacements.some((r) => r.student === s.id)).length} Small + ${d.replacements.length} Subs` : <>{d.managed ? `${d.total - d.managed} + ${d.managed} allergies` : `${d.total - d.replacements.length}`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</>}</div></td>)}</tr>)}</tbody></table>
+    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{day === 'Friday' ? `${data.reduce((n, s) => n + s.days[i].pizza, 0)} Pizzas` : data.reduce((n, s) => n + s.days[i].total, 0)}</strong></td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b>{d.day !== 'Friday' && school.sizes_enabled && school.count_mode === 'roster' && <div>{d.total}</div>}<div>{d.day === 'Friday' ? `${d.pizza} Pizzas` : school.sizes_enabled && school.count_mode === 'roster' ? `${d.roster.filter((s) => s.size === 'large' && !d.replacements.some((r) => r.student === s.id)).length} Large + ${d.roster.filter((s) => s.size === 'small' && !d.replacements.some((r) => r.student === s.id)).length} Small + ${d.replacements.length} Subs` : <>{d.managed ? `${d.total - d.managed} + ${d.managed} allergies` : `${d.total - d.replacements.length}`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</>}</div></td>)}</tr>)}</tbody></table>
     <div className="summary-school-grid">{data.map(({ school, days }) => <div className="summary-school" key={school.id}><h3>{school.name.toUpperCase()} TOTALS</h3><table><thead><tr><th>Day / Size</th><th>Total</th><th>Breakdown</th><th>Subs</th><th>Substitutions / Allergies</th></tr></thead><tbody>{days.flatMap((d) => {
       const sizes = school.count_mode !== 'manual' && school.sizes_enabled && d.day !== 'Friday' ? ['small', 'large'] : ['all'];
       return sizes.map((size, index) => { const kids = size === 'all' ? d.roster : d.roster.filter((s) => s.size === size); const replacements = size === 'all' ? d.replacements.filter((r) => d.day !== 'Friday' || !r.pizza_substitution) : d.replacements.filter((r) => kids.some((s) => s.id === r.student)); const total = size === 'all' ? d.total : kids.length;
@@ -292,6 +292,13 @@ function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; st
     })}<tr><th>Friday pizza</th><td>{days[4].pizza}</td><td>{days[4].pizza - days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.some((r) => r.pizza_substitution) ? <SubstitutionNames rows={days[4].replacements.filter((r) => r.pizza_substitution)} students={students} /> : '—'}</td></tr></tbody></table>{school.allow_substitutions && <div className="summary-legend">{['A','B','C','V'].map((code) => <div key={code}><b>{code}</b> — {school[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</div>)}</div>}</div>)}</div>
     <p className="summary-footnote">Substitutions and Allergies are included in lunch totals. Friday pizza = lunches ÷ 3, rounded up. Recurring weekday counts; see monthly calendar for menus and closures.</p>
   </div>;
+}
+
+function StudentEditor({ editing, onClose, children }: { editing: boolean; onClose: () => void; children: React.ReactNode }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { if (editing) dialog.current?.showModal(); }, [editing]);
+  if (!editing) return <div className="panel">{children}</div>;
+  return <dialog ref={dialog} className="student-modal" aria-labelledby="student-editor-title" onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === event.currentTarget) { const bounds = event.currentTarget.getBoundingClientRect(); if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose(); } }}><button type="button" className="quiet modal-close" aria-label="Close student editor" onClick={onClose}>×</button>{children}</dialog>;
 }
 
 function StudentsPage({ current, students, classrooms, onRefresh, error }: { current: Daycare | null; students: Student[]; classrooms: Row[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
@@ -313,17 +320,17 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
   function edit(s: Student) { setEditing(s); setName(s.name); setRoom(s.classroom); setSize(current?.sizes_enabled ? (s.size === 'large' ? 'large' : 'small') : 'standard'); setDays(s.service_days || []); setActive(s.active); }
   function reset() { setEditing(null); setName(''); setRoom(orderedRooms[0]?.id || ''); setSize(current?.sizes_enabled ? 'small' : 'standard'); setDays([]); setActive(true); }
   async function saveStudent(e: FormEvent) { e.preventDefault(); try { const data = { name: name.trim(), classroom: room, daycare: current!.id, size: current!.sizes_enabled ? (size === 'large' ? 'large' : 'small') : 'standard', service_days: days, active }; if (editing) await pb.collection('students').update(editing.id, data); else await pb.collection('students').create(data); reset(); await onRefresh(); } catch (e) { error(message(e)); } }
-  return <section><PageTitle title="Students & classrooms" subtitle={`Manage ${current.name}’s roster and recurring weekly service days.`} />
+  return <section><PageTitle title="Students & Classrooms" subtitle={`Manage ${current.name}’s roster and recurring weekly service days.`} />
     <div className="split-grid">
       <div className="panel"><h2>Classrooms</h2><form className="inline-form" onSubmit={saveRoom}><input value={roomName} onChange={(e) => setRoomName(e.target.value)} placeholder="New classroom" required /><button className="primary">Add</button></form>
         <div className="simple-list">{orderedRooms.filter((c) => c.daycare === current!.id).map((c) => <div className="list-row classroom-row" key={c.id}><span>{c.name}</span><span className="muted classroom-total">{students.filter((s) => s.classroom === c.id).length} students</span><div className="row-actions"><button className="quiet" onClick={async () => { const name = window.prompt('Classroom name', c.name); if (name?.trim() && name.trim() !== c.name) { try { await pb.collection('classrooms').update(c.id, { name: name.trim(), daycare: current!.id }); await onRefresh(); } catch (e) { error(message(e)); } } }}>Edit</button><button className="quiet danger-text" onClick={async () => { if (window.confirm(`Delete ${c.name}? It must have no students.`)) { try { await pb.collection('classrooms').delete(c.id); await onRefresh(); } catch (e) { error(message(e)); } } }}>Delete</button></div></div>)}</div>
       </div>
-      <div className="panel"><h2>{editing ? 'Edit student' : 'Add a student'}</h2><form onSubmit={saveStudent} className="stack-form">
+      <StudentEditor editing={Boolean(editing)} onClose={reset}><h2 id="student-editor-title">{editing ? 'Edit student' : 'Add a student'}</h2><form onSubmit={saveStudent} className="stack-form">
         <label>Student name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Classroom<select value={room} onChange={(e) => setRoom(e.target.value)} required><option value="">Choose classroom</option>{orderedRooms.filter((c) => c.daycare === current!.id && c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label>
         {current.sizes_enabled && <label>Meal size<select value={size === 'large' ? 'large' : 'small'} onChange={(e) => setSize(e.target.value)}><option value="small">Small</option><option value="large">Large</option></select></label>}
         <fieldset><legend>Recurring service days</legend><div className="day-picks">{weekdays.map((d) => <label key={d}><input type="checkbox" checked={days.includes(d)} onChange={(e) => setDays(e.target.checked ? [...days, d] : days.filter((x) => x !== d))} />{d.slice(0, 3)}</label>)}</div></fieldset>
         <label className="checkline"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active for counts</label><div className="form-actions"><button className="primary">{editing ? 'Save changes' : 'Add student'}</button>{editing && <button type="button" className="outline" onClick={reset}>Cancel</button>}</div>
-      </form></div>
+      </form></StudentEditor>
     </div>
     <div className="panel roster-panel"><div className="section-heading"><h2>Roster</h2><span className="muted">{students.filter((s) => s.daycare === current!.id).length} students</span></div><div className="table-scroll"><table><thead><tr>{[['classroom','Classroom'],['name','Name'],['size','Size'],['days','Weekly days'],['active','Status']].map(([key,label]) => <th key={key} aria-sort={sortKey === key ? (sortDirection === 1 ? 'ascending' : 'descending') : 'none'}><button className="column-sort" onClick={() => sortBy(key)}>{label}{sortKey === key ? (sortDirection === 1 ? ' ↑' : ' ↓') : ''}</button></th>)}<th></th></tr></thead><tbody>
       {sortedStudents.filter((s) => s.daycare === current!.id).map((s) => <tr key={s.id}><td>{classrooms.find((c) => c.id === s.classroom)?.name || '—'}</td><td><b>{shortStudentName(s.name)}</b></td><td>{current.sizes_enabled ? titleCase(s.size || 'standard') : '—'}</td><td>{s.service_days.join(', ') || 'None'}</td><td><span className={s.active ? 'status active-status' : 'status'}>{s.active ? 'Active' : 'Inactive'}</span></td><td className="row-actions"><button className="quiet" onClick={() => edit(s)}>Edit</button><button className="quiet danger-text" onClick={async () => { if (window.confirm(`Delete ${shortStudentName(s.name)}?`)) { try { await pb.collection('students').delete(s.id); await onRefresh(); } catch (e) { error(message(e)); } } }}>Delete</button></td></tr>)}
@@ -366,7 +373,7 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     return menuExportHtml(location?.name || '', month, (date) => valueFor(date));
   }
   function exportWord() {
-    if (location) download(new Blob([exportHtml()], { type: 'application/msword' }), `${location.public_slug}-${month}-menu.doc`);
+    if (location) download(menuExportDocx(location.name, month, (date) => valueFor(date)), menuFilename(location.name, month));
   }
   return <section><PageTitle title="Monthly menus" subtitle="Choose a school, review the suggested menu, make changes, and publish days for parents." />
     <div className="toolbar"><div className="week-control"><label className="month-picker">Month<select value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label>{!current && <label>School<select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{selectedLocations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>}</div><div className="button-row"><button className="outline" onClick={exportWord} disabled={!location}>Download Word</button><button className="primary" disabled={!location} onClick={() => printMenuHtml(exportHtml())}>Print / Save PDF</button></div></div>
@@ -427,7 +434,7 @@ function SchoolAdminsPage({ daycares, error }: { daycares: Daycare[]; error: (s:
       reset(); await refresh(); setNotice(editing ? 'School admin updated.' : 'School admin created.');
     } catch (err) { error(message(err)); } finally { setSaving(false); }
   }
-  return <section><PageTitle title="School admins" subtitle="Create school staff accounts, assign their school, update their details, and manage access." />
+  return <section><PageTitle title="School Admins" subtitle="Create school staff accounts, assign their school, update their details, and manage access." />
     {notice && <div className="notice">{notice}</div>}
     <form className="panel staff-admin-form" onSubmit={save}><h2>{editing ? 'Edit school admin' : 'Create school admin'}</h2><div className="staff-admin-fields">
       <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} /></label><label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
@@ -470,7 +477,7 @@ function publicMenuHtml(title: string, month: string, rows: MenuDay[]) {
   return menuExportHtml(title, month, (date) => rows.find((row) => dateOnly(row.service_date) === date) || { menu: 'Menu will be posted soon' });
 }
 function exportPublicWord(title: string, month: string, rows: MenuDay[]) {
-  download(new Blob([publicMenuHtml(title, month, rows)], { type: 'application/msword' }), `${slugify(title)}-${month}-menu.doc`);
+  download(menuExportDocx(title, month, (date) => rows.find((row) => dateOnly(row.service_date) === date) || { menu: 'Menu will be posted soon' }), menuFilename(title, month));
 }
 
 function shortDate(value: string) { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(`${value}T12:00:00`)); }

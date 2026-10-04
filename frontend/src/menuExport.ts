@@ -1,3 +1,4 @@
+import { menuTemplate } from "./menuTemplate.ts";
 type Meal = { menu?: string; note?: string; closed?: boolean };
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
@@ -34,4 +35,61 @@ export function printMenuHtml(html: string) {
   preview.document.open();
   preview.document.write(html);
   preview.document.close();
+}
+
+// Minimal uncompressed OOXML package: editable Word calendar with the reference logos.
+export function menuFilename(school: string, month: string) {
+  const label = new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`));
+  return `${school.replace(/[^a-zA-Z0-9 -]/g, '')} Menu ${label}.docx`;
+}
+
+function zipFiles(files: Record<string, Uint8Array>): Uint8Array {
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [], directory: Uint8Array[] = [];
+  let offset = 0;
+  const header = (size: number) => new Uint8Array(size);
+  const crc = (bytes: Uint8Array) => { let value = 0xffffffff; for (const byte of bytes) { value ^= byte; for (let i = 0; i < 8; i++) value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0); } return (value ^ 0xffffffff) >>> 0; };
+  for (const [path, bytes] of Object.entries(files)) {
+    const name = encoder.encode(path), sum = crc(bytes);
+    const local = header(30), lv = new DataView(local.buffer);
+    lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true); lv.setUint32(14, sum, true); lv.setUint32(18, bytes.length, true); lv.setUint32(22, bytes.length, true); lv.setUint16(26, name.length, true);
+    chunks.push(local, name, bytes);
+    const central = header(46), cv = new DataView(central.buffer);
+    cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true); cv.setUint32(16, sum, true); cv.setUint32(20, bytes.length, true); cv.setUint32(24, bytes.length, true); cv.setUint16(28, name.length, true); cv.setUint32(42, offset, true);
+    directory.push(central, name); offset += local.length + name.length + bytes.length;
+  }
+  const dirSize = directory.reduce((sum, part) => sum + part.length, 0), end = header(22), ev = new DataView(end.buffer);
+  ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, Object.keys(files).length, true); ev.setUint16(10, Object.keys(files).length, true); ev.setUint32(12, dirSize, true); ev.setUint32(16, offset, true);
+  const all = [...chunks, ...directory, end], output = new Uint8Array(offset + dirSize + end.length);
+  let index = 0; for (const part of all) { output.set(part, index); index += part.length; } return output;
+}
+
+export function menuExportDocx(school: string, month: string, mealFor: (date: string) => Meal): Blob {
+  const encoder = new TextEncoder();
+  const xml = (text: string) => encoder.encode(text);
+  const paragraph = (text: string, size = 18, color = '000000') => `<w:p><w:pPr><w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:b/><w:color w:val="${color}"/><w:sz w:val="${size}"/></w:rPr>${text.split(/\r?\n/).map((line,i) => `${i ? '<w:br/>' : ''}<w:t xml:space="preserve">${escapeHtml(line)}</w:t>`).join('')}</w:r></w:p>`;
+  const cell = (text: string, fill: string, color = '000000') => `<w:tc><w:tcPr><w:tcW w:w="2160" w:type="dxa"/><w:shd w:fill="${fill}"/><w:vAlign w:val="center"/></w:tcPr>${paragraph(text,18,color)}</w:tc>`;
+  const first = new Date(`${month}-01T00:00:00Z`), last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth()+1,0));
+  const monday = new Date(first); monday.setUTCDate(first.getUTCDate()-(first.getUTCDay()+6)%7);
+  let rows = `<w:tr><w:trPr><w:tblHeader/><w:trHeight w:val="320"/><w:cantSplit/></w:trPr>${['Monday','Tuesday','Wednesday','Thursday','Friday'].map(day => cell(day,'0b5394','FFFFFF')).join('')}</w:tr>`;
+  for (let start=monday.getTime();start<=last.getTime();start+=7*86400000) {
+    const days = Array.from({length:5},(_,i)=>new Date(start+i*86400000));
+    if (!days.some(date=>isoDate(date).startsWith(month))) continue;
+    rows += `<w:tr><w:trPr><w:trHeight w:val="260"/><w:cantSplit/></w:trPr>${days.map(date=>{const inside=isoDate(date).startsWith(month), meal=inside?mealFor(isoDate(date)):{};return cell(`${date.getUTCMonth()+1}/${date.getUTCDate()}/${String(date.getUTCFullYear()).slice(-2)}`,!inside||meal.closed?'f4cccc':'d9ead3');}).join('')}</w:tr>`;
+    rows += `<w:tr><w:trPr><w:trHeight w:val="780" w:hRule="atLeast"/><w:cantSplit/></w:trPr>${days.map(date=>{const inside=isoDate(date).startsWith(month), meal=inside?mealFor(isoDate(date)):{};return cell(inside?(meal.closed?'No lunch service':meal.menu||'Menu will be posted soon')+(meal.note?`\n${meal.note}`:''):'',!inside||meal.closed?'f4cccc':'fff2cc');}).join('')}</w:tr>`;
+  }
+  const w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+  const borders = ['top','left','bottom','right','insideH','insideV'].map(side=>`<w:${side} w:val="single" w:sz="4" w:color="000000"/>`).join('');
+  const label = new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric',timeZone:'UTC'}).format(first);
+  const files: Record<string,Uint8Array> = {};
+  for (const [path,base64] of Object.entries(menuTemplate)) files[path] = Uint8Array.from(atob(base64),c=>c.charCodeAt(0));
+  let headerText = new TextDecoder().decode(files['word/header1.xml']).replace('Sept 2026',escapeHtml(`${school} — ${label}`));
+  // The reference school logo applies to Lightbridge only; CLC branding applies to all schools.
+  if (!school.toLowerCase().includes('lightbridge')) headerText = headerText.replace(/<w:r[^>]*><w:rPr\/><w:drawing><wp:inline[^>]*><wp:extent cx="1905000"[\s\S]*?<\/w:drawing><\/w:r>/,'');
+  files['word/header1.xml']=xml(headerText);
+  files['word/document.xml']=xml(`<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="${w}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:tbl><w:tblPr><w:tblW w:w="10800" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>${borders}</w:tblBorders><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:left w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${'<w:gridCol w:w="2160"/>'.repeat(5)}</w:tblGrid>${rows}</w:tbl><w:p/><w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="2200" w:right="720" w:bottom="720" w:left="720" w:header="500" w:footer="500"/></w:sectPr></w:body></w:document>`);
+  files['word/_rels/document.xml.rels']=xml('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>');
+  files['_rels/.rels']=xml('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  files['[Content_Types].xml']=xml('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/></Types>');
+  return new Blob([zipFiles(files)],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
 }

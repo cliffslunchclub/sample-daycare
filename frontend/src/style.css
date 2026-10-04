@@ -17,3 +17,5 @@
 .month-picker{flex-direction:column;align-items:flex-start}.week-control{align-items:flex-end}.staff-admin-form{margin-bottom:1rem}.staff-admin-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin-bottom:1rem}@media(max-width:640px){.staff-admin-fields{grid-template-columns:1fr}}
 
 @media print{.weekly-summary{border:0;border-radius:0;box-shadow:none}}
+
+.student-modal{border:1px solid var(--line);border-radius:16px;padding:1.5rem;width:min(520px,calc(100% - 2rem));max-height:90vh;overflow:auto;color:var(--ink);box-shadow:0 20px 80px #0003}.student-modal::backdrop{background:#162c3b88}.modal-close{float:right;font-size:1.4rem}.student-modal h2{margin-top:0}
