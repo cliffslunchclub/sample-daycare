@@ -368,6 +368,9 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
 
 function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menuDays, onRefresh, error }: { menuItems: MenuItem[]; current: Daycare | null; daycares: Daycare[]; month: string; setMonth: (m: string) => void; menuDays: MenuDay[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
   const [drafts, setDrafts] = useState<Record<string, Partial<MenuDay>>>({});
+  const [copyTarget, setCopyTarget] = useState('');
+  const [copying, setCopying] = useState(false);
+  const [copyNotice, setCopyNotice] = useState('');
   const menuItems = catalog.filter((item) => item.active).map((item) => item.name);
   const selectedLocations = current ? [current] : daycares;
   const [locationId, setLocationId] = useState(current?.id || '');
@@ -396,6 +399,19 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     try { if (saved) await pb.collection('menu_days').update(saved.id, data); else await pb.collection('menu_days').create(data); setDrafts((previous) => { const next = { ...previous }; delete next[keyFor(date)]; return next; }); await onRefresh(); }
     catch (e) { error(message(e)); }
   }
+  async function copyMonth() {
+    const target = daycares.find((school) => school.id === copyTarget);
+    if (!location || !target || target.id === location.id || copying) return;
+    const source = menuDays.filter((day) => day.daycare === location.id && dateOnly(day.service_date).startsWith(month));
+    const replaced = menuDays.filter((day) => day.daycare === target.id && source.some((row) => dateOnly(row.service_date) === dateOnly(day.service_date))).length;
+    if (!window.confirm(`Copy ${source.length} saved days from ${location.name} to ${target.name} for ${monthLabel(month)}? This replaces ${replaced} existing days and saves all copied days as unpublished drafts. Unsaved edits are excluded. TLE Fridays remain no service.`)) return;
+    setCopying(true); setCopyNotice('');
+    try {
+      const result = await pb.send('/api/clone-menu', { method: 'POST', body: { source: location.id, target: target.id, month } });
+      setDrafts((previous) => Object.fromEntries(Object.entries(previous).filter(([key]) => !key.startsWith(`${target.id}:${month}`))));
+      await onRefresh(); setCopyNotice(`Copied ${result.copied} days to ${target.name} as unpublished drafts.`);
+    } catch (err) { error(message(err)); } finally { setCopying(false); }
+  }
   function exportHtml() {
     return menuExportHtml(location?.name || '', month, (date) => valueFor(date));
   }
@@ -404,6 +420,7 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
   }
   return <section><PageTitle title="Monthly Menus" subtitle="Choose a school, review the suggested menu, make changes, and publish days for parents." />
     <div className="toolbar"><div className="week-control"><label className="month-picker">Month<select value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label>{!current && <label>School<select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{selectedLocations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>}</div><div className="button-row"><button className="outline" onClick={exportWord} disabled={!location}>Download Word</button><button className="primary" disabled={!location} onClick={() => printMenuHtml(exportHtml())}>Print / Save PDF</button></div></div>
+    <div className="panel toolbar"><label>Copy saved month to<select value={copyTarget} disabled={copying} onChange={(event) => setCopyTarget(event.target.value)}><option value="">Choose another school</option>{daycares.filter((school) => school.id !== location?.id).map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}</select></label><button className="outline" disabled={copying || !location || !copyTarget || copyTarget === location.id || !menuDays.some((day) => day.daycare === location.id && dateOnly(day.service_date).startsWith(month))} onClick={() => void copyMonth()}>{copying ? 'Copying…' : 'Copy Month'}</button><p className="muted small">Saved selections and notes only. Copies are unpublished drafts; existing matching dates are replaced after confirmation.</p>{copyNotice && <p role="status">{copyNotice}</p>}</div>
     {location && <div className="panel calendar-panel"><div className="calendar-title"><div><div className="eyebrow">{location.name.toUpperCase()}</div><h2>{monthLabel(month)}</h2></div><a href={`${schoolMenuUrl(location.public_slug)}&month=${encodeURIComponent(month)}`} target="_blank" rel="noreferrer">Open public menu ↗</a></div>
       <p className="rotation-note">Next month is prefilled from the weekday rotation as unpublished suggestions. Review and save each day; staffing changes and holidays can be edited before publishing.</p>
       <div className="calendar-grid"><div className="calendar-head">Monday</div><div className="calendar-head">Tuesday</div><div className="calendar-head">Wednesday</div><div className="calendar-head">Thursday</div><div className="calendar-head">Friday</div>
