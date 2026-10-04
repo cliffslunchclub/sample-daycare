@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { pb } from './api';
 import { menuPdf } from './menuPdf';
 import { menuExportHtml, menuExportDocx, menuFilename, printMenuHtml } from './menuExport';
-import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName, publishedMenuMonths } from './operations';
+import { weekdays, weekdayForDate as dayName, weekDates, monthCalendarWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName, publishedMenuMonths } from './operations';
 
 type Row = Record<string, any>;
 type Daycare = Row & { id: string; name: string; public_slug: string; allow_substitutions: boolean; sizes_enabled: boolean; operations_enabled: boolean; count_mode: 'roster' | 'manual'; clc_managed_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_pizza_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_counts?: Partial<Record<(typeof weekdays)[number], number>> };
@@ -368,7 +368,7 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     setDrafts((previous) => ({ ...previous, [key]: { ...valueFor(date), ...(previous[key] || {}), ...patch } }));
   }
   async function saveDay(date: string) {
-    if (!location) return;
+    if (!location || !date.startsWith(month)) return;
     const value = valueFor(date); const saved = menuDays.find((d) => d.daycare === location.id && dateOnly(d.service_date) === date);
     const data = { menu_item: catalog.find((item) => item.name === value.menu)?.id || '', daycare: location.id, daycare_name: location.name, public_slug: location.public_slug, service_date: `${date} 00:00:00.000Z`, menu: value.menu || '', note: value.note || '', closed: Boolean(value.closed), published: Boolean(value.published) };
     try { if (saved) await pb.collection('menu_days').update(saved.id, data); else await pb.collection('menu_days').create(data); setDrafts((previous) => { const next = { ...previous }; delete next[keyFor(date)]; return next; }); await onRefresh(); }
@@ -385,7 +385,7 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     {location && <div className="panel calendar-panel"><div className="calendar-title"><div><div className="eyebrow">{location.name.toUpperCase()}</div><h2>{monthLabel(month)}</h2></div><a href={`${schoolMenuUrl(location.public_slug)}&month=${encodeURIComponent(month)}`} target="_blank" rel="noreferrer">Open public menu ↗</a></div>
       <p className="rotation-note">Next month is prefilled from the weekday rotation as unpublished suggestions. Review and save each day; staffing changes and holidays can be edited before publishing.</p>
       <div className="calendar-grid"><div className="calendar-head">Monday</div><div className="calendar-head">Tuesday</div><div className="calendar-head">Wednesday</div><div className="calendar-head">Thursday</div><div className="calendar-head">Friday</div>
-        {dates.map((date) => { const v = valueFor(date); const saved = menuDays.some((d) => d.daycare === location.id && dateOnly(d.service_date) === date); const isStandard = menuItems.includes(v.menu || ''); const selectedMenu = isStandard ? v.menu as string : customValue; return <div className={`calendar-day ${v.closed ? 'day-closed' : ''}`} key={date}><div className="date-label">{shortDate(date)} <span>{dayName(date).slice(0, 3)}</span></div>
+        {dates.map((date) => { if (!date.startsWith(month)) return <div className="calendar-day outside-month" key={date}><div className="date-label">{shortDate(date)} <span>{dayName(date).slice(0, 3)}</span></div><span className="muted small">Outside this month</span></div>; const v = valueFor(date); const saved = menuDays.some((d) => d.daycare === location.id && dateOnly(d.service_date) === date); const isStandard = menuItems.includes(v.menu || ''); const selectedMenu = isStandard ? v.menu as string : customValue; return <div className={`calendar-day ${v.closed ? 'day-closed' : ''}`} key={date}><div className="date-label">{shortDate(date)} <span>{dayName(date).slice(0, 3)}</span></div>
           {!saved && month === futureMonth && <span className="draft-label">Suggested · not published</span>}
           <select aria-label={`Menu for ${date}`} value={selectedMenu} disabled={Boolean(v.closed)} onChange={(e) => { const nextValue = e.target.value; updateDraft(date, { menu: nextValue === customValue ? (isStandard ? '' : v.menu || '') : nextValue }); }}>
             {menuItems.map((item) => <option key={item} value={item}>{item.replace('\n', ' — ')}</option>)}<option value={customValue}>Custom menu…</option>

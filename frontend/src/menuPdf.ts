@@ -19,9 +19,9 @@ export function menuPdf(school: string, month: string, mealFor: (date: string) =
     dates.forEach((date,i)=>{
       const inside=date.toISOString().startsWith(month),meal=inside?mealFor(date.toISOString().slice(0,10)):{};
       const off=!inside||meal.closed,x=left+i*width;
-      rect(x,y-18,width,18,off?'0.957 0.8 0.8':'0.851 0.918 0.827');
+      rect(x,y-18,width,18,!inside?'0.933 0.933 0.933':off?'0.957 0.8 0.8':'0.851 0.918 0.827');
       centered(`${date.getUTCMonth()+1}/${date.getUTCDate()}/${String(date.getUTCFullYear()).slice(-2)}`,x,y-13,width,9);
-      rect(x,y-78,width,60,off?'0.957 0.8 0.8':'1 0.949 0.8');
+      rect(x,y-78,width,60,!inside?'0.933 0.933 0.933':off?'0.957 0.8 0.8':'1 0.949 0.8');
       const value=inside?(meal.closed?'No lunch service':meal.menu||'Menu will be posted soon')+(meal.note?`\n${meal.note}`:''):'';
       const lines=value.split(/\r?\n/).flatMap(line=>{const result:string[]=[];let current='';for(const word of line.split(/\s+/)){if(current&&textWidth(current+' '+word,10)>width-12){result.push(current);current='';}current+=(current?' ':'')+word;}result.push(current);return result;});
       const size=lines.length>4?8:10;

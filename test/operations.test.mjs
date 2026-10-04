@@ -32,3 +32,11 @@ test('parent months require every weekday published and expire at New York month
   assert.deepEqual(publishedMenuMonths(november.slice(1), new Date('2026-10-04T12:00:00Z')), []);
   assert.deepEqual(publishedMenuMonths(november.map((row, index) => ({ ...row, published: index !== 0 })), new Date('2026-10-04T12:00:00Z')), []);
 });
+
+test('editor calendar pads full weekday rows so October 1 is Thursday', async () => {
+  const { monthCalendarWeekdays } = await import('../frontend/src/operations.ts');
+  const october = monthCalendarWeekdays('2026-10');
+  assert.deepEqual(october.slice(0, 5), ['2026-09-28','2026-09-29','2026-09-30','2026-10-01','2026-10-02']);
+  assert.equal(october.indexOf('2026-10-01') % 5, 3);
+  assert.deepEqual(monthCalendarWeekdays('2026-11').slice(-5), ['2026-11-30','2026-12-01','2026-12-02','2026-12-03','2026-12-04']);
+});

@@ -25,3 +25,5 @@
 .parent-school-selection{width:min(1080px,calc(100% - 2rem))}.parent-school-selection>label{max-width:440px}.parent-selected-menu{margin-top:1.5rem}
 
 .summary-substitution{white-space:pre-wrap}
+
+.calendar-grid{grid-template-columns:repeat(5,minmax(150px,1fr));min-width:800px}.calendar-panel{overflow-x:auto}.calendar-head{display:block!important}.outside-month{background:#eceeeb;color:#8a918b}.outside-month .date-label,.outside-month .date-label span{color:#8a918b}

@@ -85,3 +85,17 @@ export function publishedMenuMonths(records: { service_date: string; published: 
   const publishedDates = new Set(records.filter((row) => row.published).map((row) => row.service_date.slice(0, 10)));
   return [...new Set([...publishedDates].map((date) => date.slice(0, 7)))].filter((month) => month >= current && monthWeekdays(month).every((date) => publishedDates.has(date))).sort();
 }
+
+export function monthCalendarWeekdays(month: string): string[] {
+  const [year, number] = month.split('-').map(Number);
+  const first = new Date(Date.UTC(year, number - 1, 1));
+  const last = new Date(Date.UTC(year, number, 0));
+  const dates: string[] = [];
+  const start = new Date(first);
+  start.setUTCDate(first.getUTCDate() - (first.getUTCDay() + 6) % 7);
+  for (let week = start.getTime(); week <= last.getTime(); week += 7 * 86400000) {
+    const weekdays = Array.from({ length: 5 }, (_, index) => new Date(week + index * 86400000).toISOString().slice(0, 10));
+    if (weekdays.some((date) => date.startsWith(month))) dates.push(...weekdays);
+  }
+  return dates;
+}
