@@ -1,3 +1,12 @@
+routerAdd("GET", "/api/public-schools", (e) => {
+  try {
+    const schools = $app.findRecordsByFilter("daycares", "active = true", "name", 200, 0)
+    return e.json(200, schools.map((school) => ({ name: school.getString("name"), public_slug: school.getString("public_slug") })))
+  } catch (err) {
+    return e.json(500, { message: "Could not load schools." })
+  }
+})
+
 routerAdd("POST", "/api/daycare-admins", (e) => {
   if (!e.auth || !e.auth.getBool("active") || e.auth.getString("role") !== "clc_admin") {
     return e.json(403, { message: "CLC admin access is required." })

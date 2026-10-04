@@ -17,7 +17,44 @@ const localMonth = () => { const d = new Date(); return `${d.getFullYear()}-${St
 function App() {
   const params = new URLSearchParams(window.location.search);
   const publicSlug = params.get('menu');
-  return publicSlug ? <PublicMenu slug={publicSlug} /> : <AdminApp />;
+  if (publicSlug) return <PublicMenu slug={publicSlug} />;
+  if (params.get('parents') === '1') return <SchoolSelection />;
+  if (params.get('admin') === '1') return <AdminApp />;
+  return <LandingPage />;
+}
+
+function LandingPage() {
+  return <main className="landing-page">
+    <header className="landing-brand"><b>Cliffs Lunch Club</b><span>School meals, made simple.</span></header>
+    <section className="landing-content">
+      <div className="eyebrow">WELCOME</div>
+      <h1>Lunch information for your school.</h1>
+      <p>Choose how you’d like to continue.</p>
+      <div className="landing-choices">
+        <a className="landing-choice" href="/?parents=1"><span className="choice-kicker">FOR PARENTS</span><h2>View a school menu</h2><p>Choose your school to see its latest lunch menu.</p><b>Find your school <span aria-hidden="true">→</span></b></a>
+        <a className="landing-choice admin-choice" href="/?admin=1"><span className="choice-kicker">FOR SCHOOL STAFF</span><h2>School admin sign in</h2><p>Sign in to manage your school’s lunch operations.</p><b>Admin sign in <span aria-hidden="true">→</span></b></a>
+      </div>
+    </section>
+    <footer>Cliffs Lunch Club</footer>
+  </main>;
+}
+
+function SchoolSelection() {
+  const [schools, setSchools] = useState<{ name: string; public_slug: string }[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    pb.send<{ name: string; public_slug: string }[]>('/api/public-schools', { method: 'GET' })
+      .then(setSchools).catch(() => setError('School menus are unavailable right now. Please try again.'))
+      .finally(() => setLoading(false));
+  }, []);
+  return <main className="school-select-page">
+    <a className="back-link" href="/">← Back to home</a>
+    <div className="eyebrow">FOR PARENTS</div><h1>Choose your school</h1><p className="muted">Select a school to view its lunch menu.</p>
+    {error && <div className="notice error">{error}</div>}
+    {loading && <p className="muted">Loading schools…</p>}
+    {!loading && !error && <div className="school-list">{schools.map((school) => <a className="school-option" key={school.public_slug} href={`/?menu=${encodeURIComponent(school.public_slug)}`}><span>{school.name}</span><b aria-hidden="true">→</b></a>)}{!schools.length && <div className="panel empty-state"><p>No school menus are available yet.</p></div>}</div>}
+  </main>;
 }
 
 function AdminApp() {
@@ -90,10 +127,10 @@ function AdminApp() {
   }
   async function addAdmin(daycare: Daycare) {
     if (!daycare.operations_enabled) { setError('Enable daycare operations before creating a daycare admin.'); return; }
-    const name = window.prompt(`Admin name for ${daycare.name}`); if (!name?.trim()) return;
+    const name = window.prompt(`School admin name for ${daycare.name}`); if (!name?.trim()) return;
     const accountEmail = window.prompt('Admin email'); if (!accountEmail?.trim()) return;
     const accountPassword = window.prompt('Temporary password (at least 12 characters)'); if (!accountPassword) return;
-    try { await pb.send('/api/daycare-admins', { method: 'POST', body: { display_name: name.trim(), email: accountEmail.trim(), password: accountPassword, daycare: daycare.id } }); window.alert('Daycare admin account created.'); }
+    try { await pb.send('/api/daycare-admins', { method: 'POST', body: { display_name: name.trim(), email: accountEmail.trim(), password: accountPassword, daycare: daycare.id } }); window.alert(`School admin account created for ${daycare.name}.`); }
     catch (e) { setError(message(e)); }
   }
   async function saveDaycare(values: Partial<Daycare>) {
@@ -117,7 +154,7 @@ function AdminApp() {
   if (isClc) nav.push(['menu', 'Menus'], ['locations', 'Daycares']);
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
-    <div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>Daycare lunch, made simpler.</h1><p>Sign in to manage schedules, substitutions, menus, and counts.</p>
+    <a className="back-link" href="/">← Back to home</a><div className="eyebrow">SCHOOL STAFF</div><h1>Admin sign in</h1><p>Sign in to manage schedules, substitutions, menus, and counts.</p>
     {error && <div className="notice error">{error}</div>}
     <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
     <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
@@ -125,7 +162,7 @@ function AdminApp() {
   </form></main>;
 
   return <div className="app-shell">
-    <header className="topbar"><div className="brand"><span className="brand-mark">CLC</span><div><b>Cliffs Lunch Club</b><small>Daycare workspace</small></div></div>
+    <header className="topbar"><div className="brand"><div><b>Cliffs Lunch Club</b><small>School workspace</small></div></div>
       <div className="top-actions">{isClc && <select aria-label="Choose daycare" value={selected} onChange={(e) => setSelected(e.target.value)}><option value="all">All daycares</option>{daycares.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>}
         {!isClc && <span className="location-chip">{current?.name || 'Your daycare'}</span>}<span className="user-chip">{user.display_name || user.email}</span><button className="quiet" onClick={signOut}>Sign out</button></div>
     </header>
@@ -275,7 +312,7 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
   const [selected, setSelected] = useState(daycares[0]?.id || ''); useEffect(() => { if (!daycares.some((d) => d.id === selected)) setSelected(daycares[0]?.id || ''); }, [daycares]);
   const daycare = daycares.find((d) => d.id === selected);
   return <section><PageTitle title="Daycare locations" subtitle="CLC-wide settings and account setup for each daycare." /><div className="toolbar"><select value={selected} onChange={(e) => setSelected(e.target.value)}>{daycares.map((d) => <option value={d.id} key={d.id}>{d.name}</option>)}</select><button className="primary" onClick={onCreate}>Add daycare</button></div>
-    {daycare && <div className="panel settings-panel"><div className="section-heading"><div><h2>{daycare.name}</h2><span className="muted">Public menu slug: {daycare.public_slug}</span></div><button className="outline" disabled={!daycare.operations_enabled} title={!daycare.operations_enabled ? 'Enable daycare operations first' : ''} onClick={() => onAddAdmin(daycare)}>Create daycare admin</button></div>
+    {daycare && <div className="panel settings-panel"><div className="section-heading"><div><h2>{daycare.name}</h2><span className="muted">Public menu slug: {daycare.public_slug}</span></div><button className="outline" disabled={!daycare.operations_enabled} title={!daycare.operations_enabled ? 'Enable school operations first' : ''} onClick={() => onAddAdmin(daycare)}>Create school admin</button></div>
       <label className="checkline"><input type="checkbox" checked={Boolean(daycare.operations_enabled)} onChange={(e) => void onSave({ operations_enabled: e.target.checked })} /> Allow daycare staff to use roster, weekly counts, and billing</label>
       <label>Meal price<input key={`price-${daycare.id}`} type="number" min="0" step="0.01" defaultValue={daycare.meal_price} onBlur={(e) => { if (Number(e.target.value) !== Number(daycare.meal_price)) void onSave({ meal_price: Number(e.target.value) }); }} /></label>
       <label className="checkline"><input type="checkbox" checked={daycare.allow_substitutions} onChange={(e) => void onSave({ allow_substitutions: e.target.checked })} /> Allow substitutions for this daycare</label>
@@ -291,7 +328,7 @@ function PublicMenu({ slug }: { slug: string }) {
   const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState('Cliffs Lunch Club'); const [error, setError] = useState('');
   useEffect(() => { (async () => { try { const records = await pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date' }); setRows(records.filter((r) => dateOnly(r.service_date).startsWith(month))); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || 'Cliffs Lunch Club'); } catch (e) { setError(message(e)); } })(); }, [slug, month]);
   const dates = monthDates(month);
-  return <main className="public-page"><header className="public-header"><span className="brand-mark">CLC</span><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<input type="month" value={month} onChange={(e) => { const url = new URL(window.location.href); url.searchParams.set('month', e.target.value); window.location.href = url.toString(); }} /></label><button className="outline" onClick={() => window.print()}>Print / Save PDF</button><button className="primary" onClick={() => exportPublicWord(title, month, dates, rows)}>Download Word</button></div>{error && <div className="notice error">Menu not available.</div>}
+  return <main className="public-page"><a className="back-link" href="/?parents=1">← Choose another school</a><header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<input type="month" value={month} onChange={(e) => { const url = new URL(window.location.href); url.searchParams.set('month', e.target.value); window.location.href = url.toString(); }} /></label><button className="outline" onClick={() => window.print()}>Print / Save PDF</button><button className="primary" onClick={() => exportPublicWord(title, month, dates, rows)}>Download Word</button></div>{error && <div className="notice error">Menu not available.</div>}
     <div className="public-menu-grid">{dates.map((d) => { const row = rows.find((r) => dateOnly(r.service_date) === d); return <article key={d} className={row?.closed ? 'public-day closed' : 'public-day'}><small>{dayName(d)} · {shortDate(d)}</small><p>{row?.closed ? 'No lunch service' : row?.menu || 'Menu will be posted soon'}</p>{row?.note && <span>{row.note}</span>}</article>; })}</div><footer>Questions? Contact your daycare administrator.</footer></main>;
 }
 
