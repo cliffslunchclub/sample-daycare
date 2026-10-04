@@ -371,6 +371,9 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
   const [copyTarget, setCopyTarget] = useState('');
   const [copying, setCopying] = useState(false);
   const [copyNotice, setCopyNotice] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const [saveNotice, setSaveNotice] = useState('');
   const menuItems = catalog.filter((item) => item.active).map((item) => item.name);
   const selectedLocations = current ? [current] : daycares;
   const [locationId, setLocationId] = useState(current?.id || '');
@@ -392,13 +395,27 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     const key = keyFor(date);
     setDrafts((previous) => ({ ...previous, [key]: { ...valueFor(date), ...(previous[key] || {}), ...patch } }));
   }
-  async function saveDay(date: string) {
+  async function persistDay(date: string) {
     if (!location || !date.startsWith(month)) return;
     const value = valueFor(date); const saved = menuDays.find((d) => d.daycare === location.id && dateOnly(d.service_date) === date);
     const data = { menu_item: catalog.find((item) => item.name === value.menu)?.id || '', daycare: location.id, daycare_name: location.name, public_slug: location.public_slug, service_date: `${date} 00:00:00.000Z`, menu: value.menu || '', note: value.note || '', closed: Boolean(value.closed), published: Boolean(value.published) };
-    try { if (saved) await pb.collection('menu_days').update(saved.id, data); else await pb.collection('menu_days').create(data); setDrafts((previous) => { const next = { ...previous }; delete next[keyFor(date)]; return next; }); await onRefresh(); }
-    catch (e) { error(message(e)); }
+    if (saved) await pb.collection('menu_days').update(saved.id, data); else await pb.collection('menu_days').create(data);
+    setDrafts((previous) => { const next = { ...previous }; delete next[keyFor(date)]; return next; });
   }
+  async function saveDays(days: string[]) {
+    if (!location || savingRef.current) return;
+    savingRef.current = true; setSaving(true); setSaveNotice('');
+    let completed = 0;
+    try {
+      for (const date of days) { await persistDay(date); completed++; }
+      setSaveNotice(`Saved ${completed} ${completed === 1 ? 'day' : 'days'} for ${location.name}, ${monthLabel(month)}.`);
+    } catch (err) {
+      error(`Saved ${completed} of ${days.length} days. Remaining edits are kept; try again. ${message(err)}`);
+    } finally {
+      try { await onRefresh(); } finally { savingRef.current = false; setSaving(false); }
+    }
+  }
+  async function saveDay(date: string) { await saveDays([date]); }
   async function copyMonth() {
     const target = daycares.find((school) => school.id === copyTarget);
     if (!location || !target || target.id === location.id || copying) return;
@@ -419,10 +436,12 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     if (location) download(menuExportDocx(location.name, month, (date) => valueFor(date)), menuFilename(location.name, month));
   }
   return <section><PageTitle title="Monthly Menus" subtitle="Choose a school, review the suggested menu, make changes, and publish days for parents." />
-    <div className="toolbar"><div className="week-control"><label className="month-picker">Month<select value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label>{!current && <label>School<select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{selectedLocations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>}</div><div className="button-row"><button className="outline" onClick={exportWord} disabled={!location}>Download Word</button><button className="primary" disabled={!location} onClick={() => printMenuHtml(exportHtml())}>Print / Save PDF</button></div></div>
+    <fieldset disabled={saving || copying} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+    <div className="toolbar"><div className="week-control"><label className="month-picker">Month<select value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label>{!current && <label>School<select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{selectedLocations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>}</div><div className="button-row"><button className="primary" disabled={!location || saving} onClick={() => void saveDays(dates.filter((date) => date.startsWith(month)))}>{saving ? 'Saving…' : 'Save All'}</button><button className="outline" onClick={exportWord} disabled={!location}>Download Word</button><button className="primary" disabled={!location} onClick={() => printMenuHtml(exportHtml())}>Print / Save PDF</button></div></div>
+    {saveNotice && <p role="status">{saveNotice}</p>}
     <div className="panel toolbar"><label>Copy saved month to<select value={copyTarget} disabled={copying} onChange={(event) => setCopyTarget(event.target.value)}><option value="">Choose another school</option>{daycares.filter((school) => school.id !== location?.id).map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}</select></label><button className="outline" disabled={copying || !location || !copyTarget || copyTarget === location.id || !menuDays.some((day) => day.daycare === location.id && dateOnly(day.service_date).startsWith(month))} onClick={() => void copyMonth()}>{copying ? 'Copying…' : 'Copy Month'}</button><p className="muted small">Saved selections and notes only. Copies are unpublished drafts; existing matching dates are replaced after confirmation.</p>{copyNotice && <p role="status">{copyNotice}</p>}</div>
     {location && <div className="panel calendar-panel"><div className="calendar-title"><div><div className="eyebrow">{location.name.toUpperCase()}</div><h2>{monthLabel(month)}</h2></div><a href={`${schoolMenuUrl(location.public_slug)}&month=${encodeURIComponent(month)}`} target="_blank" rel="noreferrer">Open public menu ↗</a></div>
-      <p className="rotation-note">Next month is prefilled from the weekday rotation as unpublished suggestions. Review and save each day; staffing changes and holidays can be edited before publishing.</p>
+      <p className="rotation-note">Next month is prefilled from the weekday rotation as unpublished suggestions. Review and use Save All or save individual days; staffing changes and holidays can be edited before publishing.</p>
       <div className="calendar-grid"><div className="calendar-head">Monday</div><div className="calendar-head">Tuesday</div><div className="calendar-head">Wednesday</div><div className="calendar-head">Thursday</div><div className="calendar-head">Friday</div>
         {dates.map((date) => { if (!date.startsWith(month)) return <div className="calendar-day outside-month" key={date}><div className="date-label">{shortDate(date)} <span>{dayName(date).slice(0, 3)}</span></div><span className="muted small">Outside this month</span></div>; const v = valueFor(date); const saved = menuDays.some((d) => d.daycare === location.id && dateOnly(d.service_date) === date); const isStandard = menuItems.includes(v.menu || ''); const selectedMenu = isStandard ? v.menu as string : customValue; return <div className={`calendar-day ${v.closed ? 'day-closed' : ''}`} key={date}><div className="date-label">{shortDate(date)} <span>{dayName(date).slice(0, 3)}</span></div>
           {!saved && month === futureMonth && <span className="draft-label">Suggested · not published</span>}
@@ -435,6 +454,7 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
           <div className="day-controls"><label className="compact-check"><input type="checkbox" checked={Boolean(v.published)} disabled={!saved && month === futureMonth} onChange={(e) => updateDraft(date, { published: e.target.checked })} /> Public</label></div><button className="save-day" onClick={() => saveDay(date)}>{saved ? 'Save day' : 'Save draft'}</button></div>; })}
       </div><p className="muted small">Public menu: <code>{schoolMenuUrl(location.public_slug)}</code></p>
     </div>}
+    </fieldset>
   </section>;
 }
 
