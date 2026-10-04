@@ -89,6 +89,7 @@ function SchoolSelection() {
 
 function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [user, setUser] = useState<User | null>((pb.authStore.model as User | null) || null);
+  const [authReady, setAuthReady] = useState(!pb.authStore.isValid);
   const [email, setEmail] = useState('admin@example.test');
   const [password, setPassword] = useState('LocalLunch2026!');
   const [error, setError] = useState('');
@@ -106,7 +107,20 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [subDate, setSubDate] = useState('');
   const [subCode, setSubCode] = useState('A');
 
-  useEffect(() => pb.authStore.onChange((_token, model) => setUser((model as User | null) || null)), []);
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = pb.authStore.onChange((_token, model) => setUser((model as User | null) || null));
+    if (pb.authStore.isValid) {
+      void pb.collection('users').authRefresh<User>()
+        .then((result) => { if (active) setUser(result.record); })
+        .catch(() => { if (active) { pb.authStore.clear(); setUser(null); } })
+        .finally(() => { if (active) setAuthReady(true); });
+    } else {
+      setUser(null);
+      setAuthReady(true);
+    }
+    return () => { active = false; unsubscribe(); };
+  }, []);
   const isClc = user?.role === 'clc_admin';
   const current = daycares.find((d) => d.id === selected) || null;
   const dates = useMemo(() => weekDates(weekAnchor), [weekAnchor]);
@@ -131,8 +145,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     } catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
-  useEffect(() => { if (!superAdminOnly || user?.role === 'clc_admin') void load(); }, [user?.id]);
-  useEffect(() => { if (user && (!superAdminOnly || user.role === 'clc_admin')) void load(); }, [selected]);
+  useEffect(() => { if (authReady && user && (!superAdminOnly || user.role === 'clc_admin')) void load(); }, [authReady, user?.id]);
 
   async function signIn(e: FormEvent) {
     e.preventDefault(); setError('');
@@ -148,6 +161,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   function signOut() { pb.authStore.clear(); setDaycares([]); setStudents([]); }
 
   if (superAdminOnly && user && !isClc) return <main className="login-page"><div className="login-card"><div className="eyebrow">CLC SUPER ADMIN</div><h1>CLC admin access only</h1><p>This domain is reserved for CLC super admins.</p><button className="outline" onClick={signOut}>Sign out</button></div></main>;
+  if (!authReady) return <main className="login-page"><div className="loading">Checking sign-in…</div></main>;
 
   async function createDaycare() {
     const name = window.prompt('School name');
