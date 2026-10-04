@@ -19,13 +19,6 @@ Node.js 22.12 or newer is required. The local launcher pins PocketBase to 0.28.4
 
 The first start downloads PocketBase and installs the small frontend dependency set, so it needs internet access. Stop both services with Control+C. The next start keeps local changes and demo data.
 
-### Local demo login
-
-- Email: `admin@example.test`
-- Password: `LocalLunch2026!`
-
-These credentials are for local sample data only. Do not use them for production. The seeded records below come from the supplied school spreadsheets.
-
 ## MVP features
 
 - Each school's subdomain shows the shared landing page with parent and school-admin choices. The parent choice opens that school's menu directly; at the root domain and on localhost, it opens school selection. School staff go to sign-in and then their dashboard.
@@ -34,20 +27,17 @@ These credentials are for local sample data only. Do not use them for production
 - Add, edit, and remove classrooms and students. Student schedules repeat by weekday, with optional Small/Large counts per daycare.
 - Record and remove substitutions by service date using A, B, C, and V codes. CLC controls whether each daycare permits substitutions and can edit the option labels.
 - Generate a weekly US Letter landscape kitchen sheet with weekday counts, regular meals, substitutions, Small/Large counts, and pizza counts by daycare. Counts come from the recurring student schedules and refresh when records or closures change.
+- CLC super admins manage a shared PocketBase menu-item catalog in the **Menu items** tab; items can be added, renamed, archived, and restored. Saved daily menus retain their text when catalog items change.
 - CLC staff create monthly menus, mark days off, and publish selected dates to the read-only public menu. The public page has print-to-PDF and Word-compatible download buttons.
 - On the `admin.cliffslunchclub.com` subdomain, CLC super admins can edit menus across all schools. The editor shows the current and next month, offers daily menu choices, and pre-fills unpublished suggestions from a weekday rotation.
 
 Parents do not have app accounts and cannot order meals. The public menu only returns dates marked as published. This is the parent user type; the two authenticated account roles are `clc_admin` (CLC super admin) and `daycare_admin` (school admin).
 
-## Local sample data
+## School menus
 
-The local PocketBase seed includes:
+October menus are populated for Bergenfield, Fort Lee, and TLE. TLE follows Bergenfield, with Fridays marked as no service. Fort Lee has breakfast for lunch on October 5, fish sticks with rice on October 26, and sweet potato fries with pizza. Bergenfield's pizza has no listed side.
 
-- **Lightbridge Bergenfield** — eight classrooms and 39 student records from the supplied masterlist, with recurring weekdays, Small/Large sizes, substitutions enabled, and the substitution labels from the spreadsheet.
-- **Lightbridge Fort Lee** — operations disabled, substitutions and sizes disabled, and published October 2026 Lightbridge menu dates. It uses aggregate weekly counts from the supplied count sheet: 64 meals Monday–Thursday (62 plus Ethan and Jayden) and 62 Friday. No individual Fort Lee roster was supplied.
-- **TLE Englewood Cliffs** — operations disabled, with an aggregate count of 120 meals Monday–Thursday and zero Friday. No individual roster or menu was supplied.
-
-The October Lightbridge menu is preloaded for Bergenfield and Fort Lee, including the October 2 pizza counts. CLC can edit each school's calendar independently. TLE's menu can be added when its menu is provided. When a new local database starts, PocketBase applies the migrations and loads this data. Existing local databases receive new migrations on the next start; the local demo admin is normalized to the CLC super admin role. Turning off school operations also deactivates that school's admin accounts, and PocketBase rules enforce the operations toggle for roster and substitution records.
+PocketBase applies migrations on startup. Existing saved menu edits are preserved when correcting the starter menus. Next-month suggestions remain unpublished until reviewed by CLC.
 
 The interface uses the Sample School cream and garden-green palette, with Nunito typography and warm tomato accents.
 
@@ -72,4 +62,4 @@ The first check type-checks and builds the web app. The tests check weekday calc
 - `scripts/start.mjs` — local PocketBase and Vite launcher
 - `test` — focused recurring-count checks
 
-Never commit `pb_data` or frontend environment files. The seed migration includes the first-name roster supplied for this private development repository; keep the repository private and replace the seed records before any public release.
+Never commit `pb_data` or frontend environment files. Keep development seed data out of public releases.

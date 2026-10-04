@@ -16,7 +16,7 @@ export const menuItems = [
 const menuCycles: Record<Weekday, readonly string[]> = {
   Monday: [menuItems[0]],
   Tuesday: [menuItems[1], menuItems[2]],
-  Wednesday: [menuItems[3], menuItems[4]],
+  Wednesday: [menuItems[3]],
   Thursday: [menuItems[5], menuItems[6], menuItems[7]],
   Friday: [menuItems[8]],
 };

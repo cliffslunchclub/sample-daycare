@@ -1,13 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { pb } from './api';
-import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuItems, menuMonthOptions, suggestedMenuForDate } from './operations';
+import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate } from './operations';
 
 type Row = Record<string, any>;
 type Daycare = Row & { id: string; name: string; public_slug: string; allow_substitutions: boolean; sizes_enabled: boolean; operations_enabled: boolean; baseline_counts?: Partial<Record<(typeof weekdays)[number], number>> };
 type Student = Row & { id: string; name: string; classroom: string; daycare: string; size: string; service_days: string[]; active: boolean };
 type User = Row & { id: string; role: 'clc_admin' | 'daycare_admin'; daycare: string; display_name: string };
 type MenuDay = Row & { id: string; daycare: string; public_slug: string; service_date: string; menu: string; note: string; closed: boolean; published: boolean; pizza_count: number };
-type Tab = 'week' | 'students' | 'menu' | 'locations';
+type MenuItem = Row & { id: string; name: string; active: boolean };
+type Tab = 'week' | 'students' | 'menu' | 'items' | 'locations';
 
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -90,8 +91,8 @@ function SchoolSelection() {
 function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [user, setUser] = useState<User | null>((pb.authStore.model as User | null) || null);
   const [authReady, setAuthReady] = useState(!pb.authStore.isValid);
-  const [email, setEmail] = useState('admin@example.test');
-  const [password, setPassword] = useState('LocalLunch2026!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>(superAdminOnly || (window.location.hostname === 'localhost' && new URLSearchParams(window.location.search).has('admin')) ? 'menu' : 'week');
   const [daycares, setDaycares] = useState<Daycare[]>([]);
@@ -100,6 +101,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [students, setStudents] = useState<Student[]>([]);
   const [subs, setSubs] = useState<Row[]>([]);
   const [menuDays, setMenuDays] = useState<MenuDay[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [weekAnchor, setWeekAnchor] = useState(new Date());
   const [month, setMonth] = useState(localMonth());
   const [busy, setBusy] = useState(false);
@@ -111,7 +113,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     let active = true;
     const unsubscribe = pb.authStore.onChange((_token, model) => setUser((model as User | null) || null));
     if (pb.authStore.isValid) {
-      void pb.collection('users').authRefresh<User>()
+      void pb.collection('users').authRefresh<User>({ requestKey: null })
         .then((result) => { if (active) setUser(result.record); })
         .catch(() => { if (active) { pb.authStore.clear(); setUser(null); } })
         .finally(() => { if (active) setAuthReady(true); });
@@ -129,17 +131,18 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     if (!user) return;
     setBusy(true); setError('');
     try {
-      const [locations, rooms, kids, replacements, menus] = await Promise.all([
+      const [locations, rooms, kids, replacements, menus, items] = await Promise.all([
         pb.collection('daycares').getFullList<Daycare>({ sort: 'name' }),
         pb.collection('classrooms').getFullList({ sort: 'name' }),
         pb.collection('students').getFullList<Student>({ sort: 'name' }),
         pb.collection('substitutions').getFullList({ sort: 'service_date' }),
         pb.collection('menu_days').getFullList<MenuDay>({ sort: 'service_date' }),
+        ...(isClc ? [pb.collection('menu_items').getFullList<MenuItem>({ sort: 'name' })] : [Promise.resolve([])]),
       ]);
       setDaycares(locations);
       setClassrooms(rooms);
       setStudents(kids.map((k) => ({ ...k, service_days: Array.isArray(k.service_days) ? k.service_days : [] })));
-      setSubs(replacements); setMenuDays(menus);
+      setSubs(replacements); setMenuDays(menus); setMenuItems(items);
       const allowed = user.daycare || selected;
       if (selected !== 'all' && !locations.some((d) => d.id === selected)) setSelected(allowed && locations.some((d) => d.id === allowed) ? allowed : locations[0]?.id || '');
     } catch (e) { setError(message(e)); }
@@ -201,14 +204,14 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const selectableDaycare = selected === 'all' ? null : current;
   const operationsAvailable = isClc || Boolean(current?.operations_enabled);
   const nav: [Tab, string][] = operationsAvailable ? [['week', 'Weekly counts'], ['students', 'Students & classrooms']] : [];
-  if (isClc) nav.push(['menu', 'Menus'], ['locations', 'Daycares']);
+  if (isClc) nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['locations', 'Daycares']);
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
     {error && <div className="notice error">{error}</div>}
     <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
     <label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-    <button className="primary full">Sign in</button><p className="muted small">Local demo: admin@example.test · LocalLunch2026!</p>
+    <button className="primary full">Sign in</button>
   </form></main>;
 
   return <div className="app-shell">
@@ -237,7 +240,8 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
         <div className="legend">Substitution codes: {['A', 'B', 'C', 'V'].map((c) => <span key={c}><b>{c}</b> {current?.[`sub_${c.toLowerCase()}_label`] || `Option ${c}`}</span>)}</div>
       </section>}
       {tab === 'students' && operationsAvailable && <StudentsPage current={selectableDaycare} students={locStudents} classrooms={locClassrooms} onRefresh={load} error={setError} />}
-      {tab === 'menu' && isClc && <MenuPage current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
+      {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
+      {tab === 'items' && isClc && <MenuItemsPage items={menuItems} onRefresh={load} error={setError} />}
       {tab === 'locations' && isClc && <LocationsPage daycares={daycares} onCreate={createDaycare} onAddAdmin={addAdmin} onSave={saveDaycare} onRefresh={load} />}
     </main>
     <footer>Cliffs Lunch Club <span>·</span> Local working copy</footer>
@@ -298,8 +302,9 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
   </section>;
 }
 
-function MenuPage({ current, daycares, month, setMonth, menuDays, onRefresh, error }: { current: Daycare | null; daycares: Daycare[]; month: string; setMonth: (m: string) => void; menuDays: MenuDay[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
+function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menuDays, onRefresh, error }: { menuItems: MenuItem[]; current: Daycare | null; daycares: Daycare[]; month: string; setMonth: (m: string) => void; menuDays: MenuDay[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
   const [drafts, setDrafts] = useState<Record<string, Partial<MenuDay>>>({});
+  const menuItems = catalog.filter((item) => item.active).map((item) => item.name);
   const selectedLocations = current ? [current] : daycares;
   const [locationId, setLocationId] = useState(current?.id || '');
   const months = menuMonthOptions();
@@ -314,7 +319,7 @@ function MenuPage({ current, daycares, month, setMonth, menuDays, onRefresh, err
     const saved = menuDays.find((d) => d.daycare === location?.id && dateOnly(d.service_date) === date);
     const weekday = dayName(date);
     const defaultClosed = weekday === 'Friday' && location?.public_slug === 'tle-englewood-cliffs';
-    return { menu: saved?.menu ?? suggestedMenuForDate(date), note: saved?.note ?? '', closed: saved?.closed ?? defaultClosed, published: saved?.published ?? false, pizza_count: saved?.pizza_count ?? 0, ...saved, ...(drafts[keyFor(date)] || {}) };
+    return { menu: saved?.menu ?? (weekday === 'Friday' && location?.public_slug !== 'lightbridge-fort-lee' ? 'Pizza' : suggestedMenuForDate(date)), note: saved?.note ?? '', closed: saved?.closed ?? defaultClosed, published: saved?.published ?? false, pizza_count: saved?.pizza_count ?? 0, ...saved, ...(drafts[keyFor(date)] || {}) };
   }
   function updateDraft(date: string, patch: Partial<MenuDay>) {
     const key = keyFor(date);
@@ -323,7 +328,7 @@ function MenuPage({ current, daycares, month, setMonth, menuDays, onRefresh, err
   async function saveDay(date: string) {
     if (!location) return;
     const value = valueFor(date); const saved = menuDays.find((d) => d.daycare === location.id && dateOnly(d.service_date) === date);
-    const data = { daycare: location.id, daycare_name: location.name, public_slug: location.public_slug, service_date: `${date} 00:00:00.000Z`, menu: value.menu || '', note: value.note || '', closed: Boolean(value.closed), published: Boolean(value.published), pizza_count: Number(value.pizza_count || 0) };
+    const data = { menu_item: catalog.find((item) => item.name === value.menu)?.id || '', daycare: location.id, daycare_name: location.name, public_slug: location.public_slug, service_date: `${date} 00:00:00.000Z`, menu: value.menu || '', note: value.note || '', closed: Boolean(value.closed), published: Boolean(value.published), pizza_count: Number(value.pizza_count || 0) };
     try { if (saved) await pb.collection('menu_days').update(saved.id, data); else await pb.collection('menu_days').create(data); setDrafts((previous) => { const next = { ...previous }; delete next[keyFor(date)]; return next; }); await onRefresh(); }
     catch (e) { error(message(e)); }
   }
@@ -338,7 +343,7 @@ function MenuPage({ current, daycares, month, setMonth, menuDays, onRefresh, err
     {location && <div className="panel calendar-panel"><div className="calendar-title"><div><div className="eyebrow">{location.name.toUpperCase()}</div><h2>{monthLabel(month)}</h2></div><a href={`${schoolMenuUrl(location.public_slug)}&month=${encodeURIComponent(month)}`} target="_blank" rel="noreferrer">Open public menu ↗</a></div>
       <p className="rotation-note">Next month is prefilled from the weekday rotation as unpublished suggestions. Review and save each day; staffing changes and holidays can be edited before publishing.</p>
       <div className="calendar-grid"><div className="calendar-head">Monday</div><div className="calendar-head">Tuesday</div><div className="calendar-head">Wednesday</div><div className="calendar-head">Thursday</div><div className="calendar-head">Friday</div>
-        {dates.map((date) => { const v = valueFor(date); const saved = menuDays.some((d) => d.daycare === location.id && dateOnly(d.service_date) === date); const isStandard = menuItems.includes(v.menu as typeof menuItems[number]); const selectedMenu = isStandard ? v.menu as string : customValue; return <div className={`calendar-day ${v.closed ? 'day-closed' : ''}`} key={date}><div className="date-label">{shortDate(date)} <span>{dayName(date).slice(0, 3)}</span></div>
+        {dates.map((date) => { const v = valueFor(date); const saved = menuDays.some((d) => d.daycare === location.id && dateOnly(d.service_date) === date); const isStandard = menuItems.includes(v.menu || ''); const selectedMenu = isStandard ? v.menu as string : customValue; return <div className={`calendar-day ${v.closed ? 'day-closed' : ''}`} key={date}><div className="date-label">{shortDate(date)} <span>{dayName(date).slice(0, 3)}</span></div>
           {!saved && month === futureMonth && <span className="draft-label">Suggested · not published</span>}
           <select aria-label={`Menu for ${date}`} value={selectedMenu} disabled={Boolean(v.closed)} onChange={(e) => { const nextValue = e.target.value; updateDraft(date, { menu: nextValue === customValue ? (isStandard ? '' : v.menu || '') : nextValue }); }}>
             {menuItems.map((item) => <option key={item} value={item}>{item.replace('\n', ' — ')}</option>)}<option value={customValue}>Custom menu…</option>
@@ -349,6 +354,19 @@ function MenuPage({ current, daycares, month, setMonth, menuDays, onRefresh, err
           <div className="day-controls"><label className="compact-check"><input type="checkbox" checked={Boolean(v.published)} disabled={!saved && month === futureMonth} onChange={(e) => updateDraft(date, { published: e.target.checked })} /> Public</label><label className="pizza-input">Pizza <input type="number" min="0" value={v.pizza_count || 0} onChange={(e) => updateDraft(date, { pizza_count: Number(e.target.value) })} /></label></div><button className="save-day" onClick={() => saveDay(date)}>{saved ? 'Save day' : 'Save draft'}</button></div>; })}
       </div><p className="muted small">Public menu: <code>{schoolMenuUrl(location.public_slug)}</code></p>
     </div>}
+  </section>;
+}
+
+function MenuItemsPage({ items, onRefresh, error }: { items: MenuItem[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
+  const [name, setName] = useState('');
+  async function save(id: string, values: Partial<MenuItem>) {
+    try { await pb.collection('menu_items').update(id, values); await onRefresh(); } catch (e) { error(message(e)); }
+  }
+  return <section><PageTitle title="Menu items" subtitle="Shared choices for all schools. Changing an item leaves already saved menus unchanged." />
+    <form className="panel inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.collection('menu_items').create({ name: name.trim(), active: true }); setName(''); await onRefresh(); } catch (err) { error(message(err)); } }}>
+      <label>New menu item<textarea value={name} onChange={(e) => setName(e.target.value)} required maxLength={500} placeholder="Main dish and sides" /></label><button className="primary" disabled={!name.trim()}>Add item</button>
+    </form>
+    <div className="panel">{items.map((item) => <div className="list-row" key={`${item.id}:${item.name}`}><textarea aria-label="Menu item name" defaultValue={item.name} maxLength={500} onBlur={(e) => { if (e.target.value.trim() && e.target.value.trim() !== item.name) void save(item.id, { name: e.target.value.trim() }); }} /><button className="outline" onClick={() => void save(item.id, { active: !item.active })}>{item.active ? 'Archive' : 'Restore'}</button></div>)}</div>
   </section>;
 }
 
