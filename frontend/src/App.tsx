@@ -169,6 +169,11 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   }
   function signOut() { pb.authStore.clear(); setDaycares([]); setStudents([]); }
 
+  const operationsAvailable = isClc || Boolean(current?.operations_enabled);
+  const substitutionsAvailable = Boolean(current?.allow_substitutions);
+  const showStudentTab = operationsAvailable || substitutionsAvailable;
+  useEffect(() => { if (!isClc && current && tab === 'students' && !showStudentTab) setTab('menu'); }, [isClc, current?.id, showStudentTab, tab]);
+
   if (superAdminOnly && user && !isClc) return <main className="login-page"><div className="login-card"><div className="eyebrow">CLC SUPER ADMIN</div><h1>CLC admin access only</h1><p>This domain is reserved for CLC super admins.</p><button className="outline" onClick={signOut}>Sign out</button></div></main>;
   if (!authReady) return <main className="login-page"><div className="loading">Checking sign-in…</div></main>;
 
@@ -205,10 +210,6 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
 
   const locStudents = students.filter((s) => selected === 'all' ? true : s.daycare === selected);
   const selectableDaycare = selected === 'all' ? null : current;
-  const operationsAvailable = isClc || Boolean(current?.operations_enabled);
-  const substitutionsAvailable = Boolean(current?.allow_substitutions);
-  const showStudentTab = operationsAvailable || substitutionsAvailable;
-  useEffect(() => { if (!isClc && current && tab === 'students' && !showStudentTab) setTab('menu'); }, [isClc, current?.id, showStudentTab, tab]);
   const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
   if (!isClc) nav.push(['menu', 'Menu']);
   if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
