@@ -76,9 +76,12 @@ function SchoolSelection() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    pb.send<{ name: string; public_slug: string }[]>('/api/public-schools', { method: 'GET' })
-      .then(setSchools).catch(() => setError('School menus are unavailable right now. Please try again.'))
-      .finally(() => setLoading(false));
+    let mounted = true;
+    pb.send<{ name: string; public_slug: string }[]>('/api/public-schools', { method: 'GET', requestKey: null })
+      .then((records) => { if (mounted) { setSchools(records); setError(''); } })
+      .catch(() => { if (mounted) setError('School menus are unavailable right now. Please try again.'); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
   }, []);
   return <main className="school-select-page parent-school-selection">
     <a className="back-link" href="/">← Back to home</a>
@@ -467,7 +470,7 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
 function PublicMenu({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
   const params = new URLSearchParams(window.location.search); const months = menuMonthOptions(); const requestedMonth = params.get('month'); const month = requestedMonth && months.includes(requestedMonth) ? requestedMonth : months[0];
   const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState(schoolNameBySlug[slug] || 'Cliffs Lunch Club'); const [error, setError] = useState('');
-  useEffect(() => { (async () => { try { const records = await pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date' }); setRows(records.filter((r) => dateOnly(r.service_date).startsWith(month))); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || schoolNameBySlug[slug] || 'Cliffs Lunch Club'); } catch (e) { setError(message(e)); } })(); }, [slug, month]);
+  useEffect(() => { (async () => { try { const records = await pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date', requestKey: null }); setRows(records.filter((r) => dateOnly(r.service_date).startsWith(month))); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || schoolNameBySlug[slug] || 'Cliffs Lunch Club'); } catch (e) { setError(message(e)); } })(); }, [slug, month]);
   const pdf = useMemo(() => menuPdf(title, month, (date) => rows.find((row) => dateOnly(row.service_date) === date) || { menu: 'Menu will be posted soon' }), [title, month, rows]);
   const [pdfUrl, setPdfUrl] = useState('');
   useEffect(() => { const url = URL.createObjectURL(pdf); setPdfUrl(url); return () => URL.revokeObjectURL(url); }, [pdf]);
