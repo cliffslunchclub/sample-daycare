@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { pb } from './api';
 import { menuPdf } from './menuPdf';
 import { menuExportHtml, menuExportDocx, menuFilename, printMenuHtml } from './menuExport';
-import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName } from './operations';
+import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName, publishedMenuMonths } from './operations';
 
 type Row = Record<string, any>;
 type Daycare = Row & { id: string; name: string; public_slug: string; allow_substitutions: boolean; sizes_enabled: boolean; operations_enabled: boolean; count_mode: 'roster' | 'manual'; clc_managed_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_pizza_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_counts?: Partial<Record<(typeof weekdays)[number], number>> };
@@ -212,7 +212,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const selectableDaycare = selected === 'all' ? null : current;
   const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
   if (!isClc) nav.push(['menu', 'Menu']);
-  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
+  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Monthly Menus'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
@@ -380,7 +380,7 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
   function exportWord() {
     if (location) download(menuExportDocx(location.name, month, (date) => valueFor(date)), menuFilename(location.name, month));
   }
-  return <section><PageTitle title="Monthly menus" subtitle="Choose a school, review the suggested menu, make changes, and publish days for parents." />
+  return <section><PageTitle title="Monthly Menus" subtitle="Choose a school, review the suggested menu, make changes, and publish days for parents." />
     <div className="toolbar"><div className="week-control"><label className="month-picker">Month<select value={month} onChange={(e) => setMonth(e.target.value)}>{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label>{!current && <label>School<select value={locationId} onChange={(e) => setLocationId(e.target.value)}>{selectedLocations.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>}</div><div className="button-row"><button className="outline" onClick={exportWord} disabled={!location}>Download Word</button><button className="primary" disabled={!location} onClick={() => printMenuHtml(exportHtml())}>Print / Save PDF</button></div></div>
     {location && <div className="panel calendar-panel"><div className="calendar-title"><div><div className="eyebrow">{location.name.toUpperCase()}</div><h2>{monthLabel(month)}</h2></div><a href={`${schoolMenuUrl(location.public_slug)}&month=${encodeURIComponent(month)}`} target="_blank" rel="noreferrer">Open public menu ↗</a></div>
       <p className="rotation-note">Next month is prefilled from the weekday rotation as unpublished suggestions. Review and save each day; staffing changes and holidays can be edited before publishing.</p>
@@ -469,13 +469,23 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
 }
 
 function PublicMenu({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
-  const params = new URLSearchParams(window.location.search); const months = menuMonthOptions(); const requestedMonth = params.get('month'); const month = requestedMonth && months.includes(requestedMonth) ? requestedMonth : months[0];
   const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState(schoolNameBySlug[slug] || 'Cliffs Lunch Club'); const [error, setError] = useState('');
-  useEffect(() => { (async () => { try { const records = await pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date', requestKey: null }); setRows(records.filter((r) => dateOnly(r.service_date).startsWith(month))); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || schoolNameBySlug[slug] || 'Cliffs Lunch Club'); } catch (e) { setError(message(e)); } })(); }, [slug, month]);
+  const [requestedMonth, setRequestedMonth] = useState(''); const [now, setNow] = useState(new Date()); const [loading, setLoading] = useState(true);
+  const months = publishedMenuMonths(rows, now);
+  const month = months.includes(requestedMonth) ? requestedMonth : months[0] || localMonth();
+  useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 60000); return () => window.clearInterval(timer); }, []);
+  useEffect(() => {
+    let mounted = true; setLoading(true); setError('');
+    void pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date', requestKey: null })
+      .then((records) => { if (mounted) { setRows(records); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || schoolNameBySlug[slug] || 'Cliffs Lunch Club'); } })
+      .catch((e) => { if (mounted) setError(message(e)); })
+      .finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [slug]);
   const pdf = useMemo(() => menuPdf(title, month, (date) => rows.find((row) => dateOnly(row.service_date) === date) || { menu: 'Menu will be posted soon' }), [title, month, rows]);
   const [pdfUrl, setPdfUrl] = useState('');
   useEffect(() => { const url = URL.createObjectURL(pdf); setPdfUrl(url); return () => URL.revokeObjectURL(url); }, [pdf]);
-  return <main className={embedded ? 'school-menu-page' : 'public-page'}>{!embedded && <a className="back-link" href="/">← Back to home</a>}<header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><button className="outline" onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button><button className="outline" onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button><button className="primary" onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>{error ? <div className="notice error">Menu not available.</div> : pdfUrl && <object className="menu-pdf" data={pdfUrl} type="application/pdf" aria-label={`${monthLabel(month)} lunch menu PDF`}><p>Your browser can’t display this PDF. <a href={pdfUrl} download={`${title}-${month}-menu.pdf`}>Download the menu PDF</a></p></object>}</main>;
+  return <main className={embedded ? 'school-menu-page' : 'public-page'}>{!embedded && <a className="back-link" href="/">← Back to home</a>}<header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<select value={months.length ? month : ''} disabled={loading || !months.length} onChange={(event) => setRequestedMonth(event.target.value)}>{!months.length && <option value="">No published months</option>}{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label><button className="outline" disabled={loading || !months.length} onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button><button className="outline" disabled={loading || !months.length} onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button><button className="primary" disabled={loading || !months.length} onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>{error ? <div className="notice error">Menu not available.</div> : loading ? <p className="muted">Loading menu…</p> : !months.length ? <div className="panel empty-state"><p>The menu will appear once the full month is published.</p></div> : pdfUrl && <object className="menu-pdf" data={pdfUrl} type="application/pdf" aria-label={`${monthLabel(month)} lunch menu PDF`}><p>Your browser can’t display this PDF. <a href={pdfUrl} download={`${title}-${month}-menu.pdf`}>Download the menu PDF</a></p></object>}</main>;
 }
 
 function publicMenuHtml(title: string, month: string, rows: MenuDay[]) {

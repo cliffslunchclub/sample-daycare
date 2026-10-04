@@ -22,3 +22,13 @@ test('weekday menu suggestions follow the editable weekly rotation', () => {
   assert.equal(suggestedMenuForDate('2026-10-08'), menuItems[5]);
   assert.equal(suggestedMenuForDate('2026-10-15'), menuItems[6]);
 });
+
+test('parent months require every weekday published and expire at New York month rollover', async () => {
+  const { publishedMenuMonths } = await import('../frontend/src/operations.ts');
+  const october = monthWeekdays('2026-10').map(service_date => ({ service_date, published: true }));
+  const november = monthWeekdays('2026-11').map(service_date => ({ service_date, published: true }));
+  assert.deepEqual(publishedMenuMonths([...october, ...november], new Date('2026-11-01T03:59:00Z')), ['2026-10', '2026-11']);
+  assert.deepEqual(publishedMenuMonths([...october, ...november], new Date('2026-11-01T04:00:00Z')), ['2026-11']);
+  assert.deepEqual(publishedMenuMonths(november.slice(1), new Date('2026-10-04T12:00:00Z')), []);
+  assert.deepEqual(publishedMenuMonths(november.map((row, index) => ({ ...row, published: index !== 0 })), new Date('2026-10-04T12:00:00Z')), []);
+});

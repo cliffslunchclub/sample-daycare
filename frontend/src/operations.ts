@@ -78,3 +78,10 @@ export function shortStudentName(name: string): string {
   const first = parts[0].toLowerCase() === 'rj' ? 'RJ' : parts[0];
   return parts.length > 1 ? `${first} ${parts[parts.length - 1][0].toUpperCase()}` : first;
 }
+
+export function publishedMenuMonths(records: { service_date: string; published: boolean }[], now = new Date()): string[] {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit' }).formatToParts(now);
+  const current = `${parts.find((part) => part.type === 'year')!.value}-${parts.find((part) => part.type === 'month')!.value}`;
+  const publishedDates = new Set(records.filter((row) => row.published).map((row) => row.service_date.slice(0, 10)));
+  return [...new Set([...publishedDates].map((date) => date.slice(0, 7)))].filter((month) => month >= current && monthWeekdays(month).every((date) => publishedDates.has(date))).sort();
+}
