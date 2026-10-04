@@ -110,6 +110,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [weekAnchor] = useState(new Date());
   const [month, setMonth] = useState(localMonth());
   const [busy, setBusy] = useState(false);
+  const loadVersion = useRef(0);
   const [subStudent, setSubStudent] = useState('');
   const [subDate, setSubDate] = useState('');
   const [subCode, setSubCode] = useState('A');
@@ -134,31 +135,38 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
 
   async function load() {
     if (!user) return;
+    const version = ++loadVersion.current;
+    const accountId = user.id;
     setBusy(true); setError('');
     try {
       const [locations, rooms, kids, replacements, menus, items] = await Promise.all([
-        pb.collection('daycares').getFullList<Daycare>({ sort: 'name' }),
-        pb.collection('classrooms').getFullList({ sort: 'name' }),
-        pb.collection('students').getFullList<Student>({ sort: 'name' }),
-        pb.collection('substitutions').getFullList({ sort: 'service_date' }),
-        pb.collection('menu_days').getFullList<MenuDay>({ sort: 'service_date' }),
-        ...(isClc ? [pb.collection('menu_items').getFullList<MenuItem>({ sort: 'name' })] : [Promise.resolve([])]),
+        pb.collection('daycares').getFullList<Daycare>({ sort: 'name', requestKey: null }),
+        pb.collection('classrooms').getFullList({ sort: 'name', requestKey: null }),
+        pb.collection('students').getFullList<Student>({ sort: 'name', requestKey: null }),
+        pb.collection('substitutions').getFullList({ sort: 'service_date', requestKey: null }),
+        pb.collection('menu_days').getFullList<MenuDay>({ sort: 'service_date', requestKey: null }),
+        ...(isClc ? [pb.collection('menu_items').getFullList<MenuItem>({ sort: 'name', requestKey: null })] : [Promise.resolve([])]),
       ]);
+      if (version !== loadVersion.current || pb.authStore.model?.id !== accountId) return;
       setDaycares(locations);
       setClassrooms(rooms);
       setStudents(kids.map((k) => ({ ...k, service_days: Array.isArray(k.service_days) ? k.service_days : [] })));
       setSubs(replacements); setMenuDays(menus); setMenuItems(items);
-      const allowed = user.role === 'clc_admin' ? 'all' : user.daycare;
-      if (selected !== 'all' && !locations.some((d) => d.id === selected)) setSelected(allowed === 'all' || (allowed && locations.some((d) => d.id === allowed)) ? allowed : locations[0]?.id || '');
-    } catch (e) { setError(message(e)); }
-    finally { setBusy(false); }
+      setSelected((previous) => {
+        if (user.role !== 'clc_admin') return locations.some((school) => school.id === user.daycare) ? user.daycare : '';
+        return previous === 'all' || locations.some((school) => school.id === previous) ? previous : 'all';
+      });
+    } catch (e) { if (version === loadVersion.current && pb.authStore.model?.id === accountId) setError(message(e)); }
+    finally { if (version === loadVersion.current) setBusy(false); }
   }
-  useEffect(() => { if (authReady && user && (!superAdminOnly || user.role === 'clc_admin')) void load(); }, [authReady, user?.id]);
+  useEffect(() => { if (authReady && user && (!superAdminOnly || user.role === 'clc_admin')) void load(); }, [authReady, user?.id, user?.role, user?.daycare]);
+  useEffect(() => () => { loadVersion.current++; }, []);
 
   async function signIn(e: FormEvent) {
     e.preventDefault(); setError('');
     try {
       const result = await pb.collection('users').authWithPassword<User>(email, password);
+      setSelected(result.record.role === 'clc_admin' ? 'all' : result.record.daycare);
       setTab(result.record.role === 'clc_admin' ? 'summary' : 'students');
       if (superAdminOnly && result.record.role !== 'clc_admin') {
         pb.authStore.clear();
@@ -167,7 +175,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     }
     catch (e) { setError(message(e)); }
   }
-  function signOut() { pb.authStore.clear(); setDaycares([]); setStudents([]); }
+  function signOut() { loadVersion.current++; pb.authStore.clear(); setSelected(''); setDaycares([]); setClassrooms([]); setStudents([]); setSubs([]); setMenuDays([]); setMenuItems([]); setBusy(false); setError(''); }
 
   const operationsAvailable = isClc || Boolean(current?.operations_enabled);
   const substitutionsAvailable = Boolean(current?.allow_substitutions);
