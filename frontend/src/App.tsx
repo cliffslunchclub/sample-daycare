@@ -56,14 +56,13 @@ function LandingPage({ schoolSlug }: { schoolSlug: string }) {
   const schoolName = schoolNameBySlug[schoolSlug];
   const superAdminUrl = isLocalHost() ? '/?admin=1' : 'https://admin.cliffslunchclub.com/';
   return <main className="landing-page">
-    <header className="landing-brand"><div><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></div><a className="super-admin-link" href={superAdminUrl}>CLC Super Admin Login</a></header>
+    <header className="landing-brand"><div><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></div><a className="super-admin-link" href={superAdminUrl}>CLC Login</a></header>
     <section className="landing-content">
-      <div className="eyebrow">WELCOME</div>
-      <h1>{schoolName ? `${schoolName} lunch information.` : 'Lunch information for your school.'}</h1>
+      <h1><strong>Welcome to Cliffs Lunch Club</strong></h1>
       <p>Choose how you’d like to continue.</p>
       <div className="landing-choices">
-        <a className="landing-choice" href={schoolSlug ? `/?menu=${encodeURIComponent(schoolSlug)}` : '/?parents=1'}><span className="choice-kicker">FOR PARENTS</span><h2>View the lunch menu</h2><p>{schoolName ? `Open the latest menu for ${schoolName}.` : 'Choose your school to see its latest lunch menu.'}</p><b>{schoolName ? 'View menu' : 'Find your school'} <span aria-hidden="true">→</span></b></a>
-        <a className="landing-choice admin-choice" href="/?admin=1"><span className="choice-kicker">FOR SCHOOL STAFF</span><h2>School admin sign in</h2><p>Sign in to manage your school’s lunch operations.</p><b>Admin sign in <span aria-hidden="true">→</span></b></a>
+        <a className="landing-choice" href={schoolSlug ? `/?menu=${encodeURIComponent(schoolSlug)}` : '/?parents=1'}><span className="choice-kicker">FOR PARENTS</span><h2>View the Lunch Menu</h2><p>{schoolName ? `Open the latest menu for ${schoolName}.` : 'Choose your school to see its latest lunch menu.'}</p><b>{schoolName ? 'View menu' : 'Find your school'} <span aria-hidden="true">→</span></b></a>
+        <a className="landing-choice admin-choice" href="/?admin=1"><span className="choice-kicker">FOR SCHOOL STAFF</span><h2>School Admin Sign In</h2><p>Sign in to manage your school’s lunch operations.</p><b>Admin sign in <span aria-hidden="true">→</span></b></a>
       </div>
     </section>
     <footer>Cliffs Lunch Club</footer>
