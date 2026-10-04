@@ -13,25 +13,43 @@ const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 const dateOnly = (value: string) => String(value || '').slice(0, 10);
 const localMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
+const schoolSlugBySubdomain: Record<string, string> = {
+  bergenfield: 'lightbridge-bergenfield', 'lightbridge-bergenfield': 'lightbridge-bergenfield',
+  fortlee: 'lightbridge-fort-lee', 'fort-lee': 'lightbridge-fort-lee', 'lightbridge-fort-lee': 'lightbridge-fort-lee',
+  tle: 'tle-englewood-cliffs', 'tle-englewood-cliffs': 'tle-englewood-cliffs',
+};
+const schoolNameBySlug: Record<string, string> = {
+  'lightbridge-bergenfield': 'Lightbridge Bergenfield',
+  'lightbridge-fort-lee': 'Lightbridge Fort Lee',
+  'tle-englewood-cliffs': 'TLE Englewood Cliffs',
+};
+
+function schoolSlugForPage(params: URLSearchParams) {
+  const requested = params.get('school');
+  if (requested && schoolNameBySlug[requested]) return requested;
+  return schoolSlugBySubdomain[window.location.hostname.toLowerCase().split('.')[0]] || '';
+}
 
 function App() {
   const params = new URLSearchParams(window.location.search);
+  const schoolSlug = schoolSlugForPage(params);
   const publicSlug = params.get('menu');
   if (publicSlug) return <PublicMenu slug={publicSlug} />;
-  if (params.get('parents') === '1') return <SchoolSelection />;
+  if (params.get('parents') === '1') return schoolSlug ? <PublicMenu slug={schoolSlug} /> : <SchoolSelection />;
   if (params.get('admin') === '1') return <AdminApp />;
-  return <LandingPage />;
+  return <LandingPage schoolSlug={schoolSlug} />;
 }
 
-function LandingPage() {
+function LandingPage({ schoolSlug }: { schoolSlug: string }) {
+  const schoolName = schoolNameBySlug[schoolSlug];
   return <main className="landing-page">
-    <header className="landing-brand"><b>Cliffs Lunch Club</b><span>School meals, made simple.</span></header>
+    <header className="landing-brand"><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></header>
     <section className="landing-content">
       <div className="eyebrow">WELCOME</div>
-      <h1>Lunch information for your school.</h1>
+      <h1>{schoolName ? `${schoolName} lunch information.` : 'Lunch information for your school.'}</h1>
       <p>Choose how you’d like to continue.</p>
       <div className="landing-choices">
-        <a className="landing-choice" href="/?parents=1"><span className="choice-kicker">FOR PARENTS</span><h2>View a school menu</h2><p>Choose your school to see its latest lunch menu.</p><b>Find your school <span aria-hidden="true">→</span></b></a>
+        <a className="landing-choice" href={schoolSlug ? `/?menu=${encodeURIComponent(schoolSlug)}` : '/?parents=1'}><span className="choice-kicker">FOR PARENTS</span><h2>View the lunch menu</h2><p>{schoolName ? `Open the latest menu for ${schoolName}.` : 'Choose your school to see its latest lunch menu.'}</p><b>{schoolName ? 'View menu' : 'Find your school'} <span aria-hidden="true">→</span></b></a>
         <a className="landing-choice admin-choice" href="/?admin=1"><span className="choice-kicker">FOR SCHOOL STAFF</span><h2>School admin sign in</h2><p>Sign in to manage your school’s lunch operations.</p><b>Admin sign in <span aria-hidden="true">→</span></b></a>
       </div>
     </section>
@@ -328,7 +346,7 @@ function PublicMenu({ slug }: { slug: string }) {
   const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState('Cliffs Lunch Club'); const [error, setError] = useState('');
   useEffect(() => { (async () => { try { const records = await pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date' }); setRows(records.filter((r) => dateOnly(r.service_date).startsWith(month))); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || 'Cliffs Lunch Club'); } catch (e) { setError(message(e)); } })(); }, [slug, month]);
   const dates = monthDates(month);
-  return <main className="public-page"><a className="back-link" href="/?parents=1">← Choose another school</a><header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<input type="month" value={month} onChange={(e) => { const url = new URL(window.location.href); url.searchParams.set('month', e.target.value); window.location.href = url.toString(); }} /></label><button className="outline" onClick={() => window.print()}>Print / Save PDF</button><button className="primary" onClick={() => exportPublicWord(title, month, dates, rows)}>Download Word</button></div>{error && <div className="notice error">Menu not available.</div>}
+  return <main className="public-page"><a className="back-link" href="/">← Back to home</a><header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<input type="month" value={month} onChange={(e) => { const url = new URL(window.location.href); url.searchParams.set('month', e.target.value); window.location.href = url.toString(); }} /></label><button className="outline" onClick={() => window.print()}>Print / Save PDF</button><button className="primary" onClick={() => exportPublicWord(title, month, dates, rows)}>Download Word</button></div>{error && <div className="notice error">Menu not available.</div>}
     <div className="public-menu-grid">{dates.map((d) => { const row = rows.find((r) => dateOnly(r.service_date) === d); return <article key={d} className={row?.closed ? 'public-day closed' : 'public-day'}><small>{dayName(d)} · {shortDate(d)}</small><p>{row?.closed ? 'No lunch service' : row?.menu || 'Menu will be posted soon'}</p>{row?.note && <span>{row.note}</span>}</article>; })}</div><footer>Questions? Contact your daycare administrator.</footer></main>;
 }
 

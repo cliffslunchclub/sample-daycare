@@ -28,7 +28,7 @@ These credentials are for local sample data only. Do not use them for production
 
 ## MVP features
 
-- The landing page routes parents to school selection and menus, and school staff to sign-in and their dashboard.
+- Each school's subdomain shows the shared landing page with parent and school-admin choices. The parent choice opens that school's menu directly; at the root domain and on localhost, it opens school selection. School staff go to sign-in and then their dashboard.
 - CLC super admins manage locations, control whether each school can use operations, and create a school admin account for the selected location. School staff can only access their own enabled location.
 - Parents view published menus without logging in. School admins manage rosters only when CLC has enabled operations for their school.
 - Add, edit, and remove classrooms and students. Student schedules repeat by weekday, with optional Small/Large counts per daycare.
@@ -50,6 +50,8 @@ The local PocketBase seed includes:
 The October Lightbridge menu is preloaded for Bergenfield and Fort Lee, including the October 2 pizza counts. CLC can edit the two calendars independently. TLE's menu can be added when its menu is provided. When a new local database starts, PocketBase applies the migrations and loads this data. Existing local databases receive the seed migration on the next start; the local demo admin is normalized to the CLC super admin role. Turning off daycare operations also deactivates that location's daycare admin accounts, and PocketBase rules enforce the operations toggle for roster, substitution, and billing records.
 
 The interface uses the Sample School cream and garden-green palette, with Nunito typography and warm tomato accents.
+
+For production, point the school's subdomains at this same frontend build: `bergenfield.cliffslunchclub.com`, `fortlee.cliffslunchclub.com`, and `tle.cliffslunchclub.com`. The frontend maps those hostnames to their school menu slugs. For local testing, add `?school=lightbridge-bergenfield`, `?school=lightbridge-fort-lee`, or `?school=tle-englewood-cliffs` to the local URL.
 
 ## Development checks
 
