@@ -1,0 +1,8 @@
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+.runtime/
+pb_data/
+data/
+frontend/*.tsbuildinfo
