@@ -66,3 +66,5 @@ The first check type-checks and builds the web app. The tests check weekday calc
 - `test` — focused recurring-count checks
 
 Never commit `pb_data` or frontend environment files. Keep development seed data out of public releases.
+
+School staff always have a read-only Menu tab. Roster and substitution sections follow each school’s feature toggles; the Students & Classrooms tab is hidden when both are off. Turning off roster operations does not disable accounts. Parents open the current month as an embedded PDF with a download fallback.

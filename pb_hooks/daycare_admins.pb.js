@@ -24,10 +24,7 @@ routerAdd("POST", "/api/daycare-admins", (e) => {
     return e.json(400, { message: "An account with that email already exists." })
   } catch (err) {}
   try {
-    const daycare = $app.findRecordById("daycares", daycareId)
-    if (!daycare.getBool("operations_enabled")) {
-      return e.json(400, { message: "Enable daycare operations before creating a daycare admin." })
-    }
+    $app.findRecordById("daycares", daycareId)
     const record = new Record($app.findCollectionByNameOrId("users"))
     record.set("email", email)
     record.set("password", password)

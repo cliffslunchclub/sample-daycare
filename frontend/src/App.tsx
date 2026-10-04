@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { pb } from './api';
+import { menuPdf } from './menuPdf';
 import { menuExportHtml, menuExportDocx, menuFilename, printMenuHtml } from './menuExport';
 import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName } from './operations';
 
@@ -56,7 +57,7 @@ function LandingPage({ schoolSlug }: { schoolSlug: string }) {
   const schoolName = schoolNameBySlug[schoolSlug];
   const superAdminUrl = isLocalHost() ? '/?admin=1' : 'https://admin.cliffslunchclub.com/';
   return <main className="landing-page">
-    <header className="landing-brand"><div><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></div><a className="super-admin-link" href={superAdminUrl}>CLC Login</a></header>
+    <header className="landing-brand"><div><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></div><a className="super-admin-link" href={superAdminUrl}>CLC LOGIN</a></header>
     <section className="landing-content">
       <h1><strong>Welcome to Cliffs Lunch Club</strong></h1>
       <p>Choose how you’d like to continue.</p>
@@ -107,7 +108,6 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [subStudent, setSubStudent] = useState('');
   const [subDate, setSubDate] = useState('');
   const [subCode, setSubCode] = useState('A');
-  const [pizzaSub, setPizzaSub] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -193,10 +193,6 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     const { id: _id, ...patch } = values;
     try {
       await pb.collection('daycares').update(target.id, patch);
-      if (values.operations_enabled === false) {
-        const admins = await pb.collection('users').getFullList<User>({ filter: pb.filter('daycare = {:daycare} && role = {:role}', { daycare: target.id, role: 'daycare_admin' }) });
-        await Promise.all(admins.map((admin) => pb.collection('users').update(admin.id, { active: false })));
-      }
       await load();
     }
     catch (e) { setError(message(e)); }
@@ -205,7 +201,11 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const locStudents = students.filter((s) => selected === 'all' ? true : s.daycare === selected);
   const selectableDaycare = selected === 'all' ? null : current;
   const operationsAvailable = isClc || Boolean(current?.operations_enabled);
-  const nav: [Tab, string][] = operationsAvailable ? [['students', 'Students & Classrooms']] : [];
+  const substitutionsAvailable = Boolean(current?.allow_substitutions);
+  const showStudentTab = operationsAvailable || substitutionsAvailable;
+  useEffect(() => { if (!isClc && current && tab === 'students' && !showStudentTab) setTab('menu'); }, [isClc, current?.id, showStudentTab, tab]);
+  const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
+  if (!isClc) nav.push(['menu', 'Menu']);
   if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
@@ -225,18 +225,18 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     <main className="content">
       {error && <div className="notice error">{error}<button className="quiet" onClick={() => setError('')}>Dismiss</button></div>}
       {busy && <div className="loading">Refreshing…</div>}
-      {!isClc && !operationsAvailable && <section><PageTitle title="Menu access" subtitle="Your school's published menu is available without signing in." /><div className="panel empty-state"><p>School operations are turned off for this location. Ask a CLC super admin to enable staff access if your team needs roster or weekly count tools.</p></div></section>}
-      {tab === 'students' && operationsAvailable && <section><SchoolStudentsPage current={selectableDaycare} daycares={daycares} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />        {current && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
-          {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode, pizza_substitution: pizzaSub } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
+      {tab === 'students' && showStudentTab && <section>{operationsAvailable && <SchoolStudentsPage current={selectableDaycare} daycares={daycares} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />}{current?.allow_substitutions && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
+          {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode, pizza_substitution: false } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
             <select value={subStudent} required onChange={(e) => setSubStudent(e.target.value)}><option value="">Student</option>{locStudents.filter((s) => s.active && s.daycare === current.id).map((s) => <option key={s.id} value={s.id}>{shortStudentName(s.name)}</option>)}</select>
             <select value={subDate} required onChange={(e) => setSubDate(e.target.value)}><option value="">Weekday</option>{dates.map((d) => <option key={d} value={d}>{dayName(d)}</option>)}</select>
             <select value={subCode} onChange={(e) => setSubCode(e.target.value)}>{['A', 'B', 'C', 'V'].map((code) => <option key={code} value={code}>{code} — {current[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</option>)}</select>
-            <label className="compact-check"><input type="checkbox" checked={pizzaSub} onChange={(e) => setPizzaSub(e.target.checked)} /> Friday pizza substitution</label><button className="primary">Add recurring</button>
+            <button className="primary">Add recurring</button>
           </form>}
           <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && s.recurring).map((s) => <div className="list-row" key={s.id}><span>{s.weekday} · {shortStudentName(locStudents.find((kid) => kid.id === s.student)?.name || 'Student')}: <strong className="substitution-code">{s.code}</strong></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
         </div>}
 </section>}
       {tab === 'summary' && isClc && <section><PageTitle title="Weekly summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /></section>}
+      {tab === 'menu' && !isClc && current && <PublicMenu slug={current.public_slug} embedded />}
       {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
       {tab === 'items' && isClc && <MenuItemsPage items={menuItems} onRefresh={load} error={setError} />}
       {tab === 'users' && isClc && <SchoolAdminsPage daycares={daycares} error={setError} />}
@@ -423,11 +423,10 @@ function SchoolAdminsPage({ daycares, error }: { daycares: Daycare[]; error: (s:
     e.preventDefault(); setSaving(true); setNotice('');
     try {
       if (editing) {
-        const data: Row = { display_name: name.trim(), email: email.trim(), daycare: schoolId, active: active && Boolean(school?.operations_enabled), role: 'daycare_admin' };
+        const data: Row = { display_name: name.trim(), email: email.trim(), daycare: schoolId, active: active, role: 'daycare_admin' };
         if (password) { data.password = password; data.passwordConfirm = password; }
         await pb.collection('users').update(editing.id, data);
       } else {
-        if (!school?.operations_enabled) throw new Error('Enable school operations in Daycares before creating a school admin.');
         await pb.send('/api/daycare-admins', { method: 'POST', body: { display_name: name.trim(), email: email.trim(), password, daycare: schoolId } });
       }
       reset(); await refresh(); setNotice(editing ? 'School admin updated.' : 'School admin created.');
@@ -439,12 +438,12 @@ function SchoolAdminsPage({ daycares, error }: { daycares: Daycare[]; error: (s:
       <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} /></label><label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
       <label>School<select value={schoolId} required onChange={(e) => setSchoolId(e.target.value)}><option value="">Choose school</option>{daycares.map((d) => <option key={d.id} value={d.id}>{d.name}{!d.operations_enabled ? ' (operations off)' : ''}</option>)}</select></label>
       <label>{editing ? 'New password (optional)' : 'Temporary password'}<input type="password" autoComplete="new-password" required={!editing} minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-    </div>{editing && <label className="checkline"><input type="checkbox" checked={active && Boolean(school?.operations_enabled)} disabled={!school?.operations_enabled} onChange={(e) => setActive(e.target.checked)} /> Account active</label>}
-    {!school?.operations_enabled && <p className="muted small">School operations must be enabled before staff can sign in.</p>}
+    </div>{editing && <label className="checkline"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Account active</label>}
+    {!school?.operations_enabled && <p className="muted small">Roster tools are off. Staff can still view the school menu.</p>}
     <div className="form-actions"><button className="primary" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save account' : 'Create account'}</button>{editing && <button type="button" className="outline" onClick={reset}>Cancel</button>}</div></form>
     <div className="panel table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Access</th><th>Actions</th></tr></thead><tbody>{accounts.map((account) => {
       const location = daycares.find((d) => d.id === account.daycare);
-      return <tr key={account.id}><td>{account.display_name}</td><td>{account.email}</td><td>{location?.name || 'Unassigned'}</td><td>{account.active && location?.operations_enabled ? 'Active' : 'Disabled'}</td><td><div className="row-actions"><button className="outline" onClick={() => edit(account)}>Edit</button><button className="quiet" disabled={!account.active && !location?.operations_enabled} onClick={async () => { try { await pb.collection('users').update(account.id, { active: !account.active }); await refresh(); } catch (e) { error(message(e)); } }}>{account.active ? 'Deactivate' : 'Activate'}</button><button className="quiet danger-text" onClick={async () => { if (!window.confirm(`Delete school admin ${account.display_name || account.email}?`)) return; try { await pb.collection('users').delete(account.id); if (editing?.id === account.id) reset(); await refresh(); } catch (e) { error(message(e)); } }}>Delete</button></div></td></tr>;
+      return <tr key={account.id}><td>{account.display_name}</td><td>{account.email}</td><td>{location?.name || 'Unassigned'}</td><td>{account.active ? 'Active' : 'Disabled'}</td><td><div className="row-actions"><button className="outline" onClick={() => edit(account)}>Edit</button><button className="quiet" onClick={async () => { try { await pb.collection('users').update(account.id, { active: !account.active }); await refresh(); } catch (e) { error(message(e)); } }}>{account.active ? 'Deactivate' : 'Activate'}</button><button className="quiet danger-text" onClick={async () => { if (!window.confirm(`Delete school admin ${account.display_name || account.email}?`)) return; try { await pb.collection('users').delete(account.id); if (editing?.id === account.id) reset(); await refresh(); } catch (e) { error(message(e)); } }}>Delete</button></div></td></tr>;
     })}{!accounts.length && <tr><td colSpan={5} className="empty-cell">No school admin accounts yet.</td></tr>}</tbody></table></div>
   </section>;
 }
@@ -453,7 +452,7 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
   const [selected, setSelected] = useState(daycares[0]?.id || ''); useEffect(() => { if (!daycares.some((d) => d.id === selected)) setSelected(daycares[0]?.id || ''); }, [daycares]);
   const daycare = daycares.find((d) => d.id === selected);
   return <section><PageTitle title="School settings" subtitle="CLC-wide settings and account setup for each school." /><div className="toolbar"><select value={selected} onChange={(e) => setSelected(e.target.value)}>{daycares.map((d) => <option value={d.id} key={d.id}>{d.name}</option>)}</select><button className="primary" onClick={onCreate}>Add school</button></div>
-    {daycare && <div className="panel settings-panel"><div className="section-heading"><div><h2>{daycare.name}</h2><span className="muted">Public menu: {schoolSubdomainBySlug[daycare.public_slug] || daycare.public_slug}.cliffslunchclub.com</span></div><button className="outline" disabled={!daycare.operations_enabled} title={!daycare.operations_enabled ? 'Enable school operations first' : ''} onClick={() => onAddAdmin(daycare)}>Create school admin</button></div>
+    {daycare && <div className="panel settings-panel"><div className="section-heading"><div><h2>{daycare.name}</h2><span className="muted">Public menu: {schoolSubdomainBySlug[daycare.public_slug] || daycare.public_slug}.cliffslunchclub.com</span></div><button className="outline" onClick={() => onAddAdmin(daycare)}>Create school admin</button></div>
       <label className="checkline"><input type="checkbox" checked={Boolean(daycare.operations_enabled)} onChange={(e) => void onSave({ id: daycare.id, operations_enabled: e.target.checked })} /> Allow school staff to use roster and weekly counts</label>
       <label className="checkline"><input type="checkbox" checked={daycare.allow_substitutions} onChange={(e) => void onSave({ id: daycare.id, allow_substitutions: e.target.checked })} /> Allow substitutions for this daycare</label>
       <label className="checkline"><input type="checkbox" checked={daycare.sizes_enabled} onChange={(e) => void onSave({ id: daycare.id, sizes_enabled: e.target.checked })} /> Track Small and Large meal counts</label>
@@ -463,13 +462,14 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
   </section>;
 }
 
-function PublicMenu({ slug }: { slug: string }) {
+function PublicMenu({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
   const params = new URLSearchParams(window.location.search); const months = menuMonthOptions(); const requestedMonth = params.get('month'); const month = requestedMonth && months.includes(requestedMonth) ? requestedMonth : months[0];
-  const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState('Cliffs Lunch Club'); const [error, setError] = useState('');
-  useEffect(() => { (async () => { try { const records = await pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date' }); setRows(records.filter((r) => dateOnly(r.service_date).startsWith(month))); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || 'Cliffs Lunch Club'); } catch (e) { setError(message(e)); } })(); }, [slug, month]);
-  const dates = monthDates(month);
-  return <main className="public-page"><a className="back-link" href="/">← Back to home</a><header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<select value={month} onChange={(e) => { const url = new URL(window.location.href); url.searchParams.set('month', e.target.value); window.location.href = url.toString(); }}>{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label><button className="outline" onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button><button className="primary" onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>{error && <div className="notice error">Menu not available.</div>}
-    <div className="public-menu-grid">{dates.map((d) => { const row = rows.find((r) => dateOnly(r.service_date) === d); return <article key={d} className={row?.closed ? 'public-day closed' : 'public-day'}><small>{dayName(d)} · {shortDate(d)}</small><p>{row?.closed ? 'No lunch service' : row?.menu || 'Menu will be posted soon'}</p>{row?.note && <span>{row.note}</span>}</article>; })}</div><footer>Questions? Contact your daycare administrator.</footer></main>;
+  const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState(schoolNameBySlug[slug] || 'Cliffs Lunch Club'); const [error, setError] = useState('');
+  useEffect(() => { (async () => { try { const records = await pb.collection('menu_days').getFullList<MenuDay>({ filter: pb.filter('public_slug = {:slug} && published = true', { slug }), sort: 'service_date' }); setRows(records.filter((r) => dateOnly(r.service_date).startsWith(month))); setTitle(records.find((r) => r.public_slug === slug)?.daycare_name || schoolNameBySlug[slug] || 'Cliffs Lunch Club'); } catch (e) { setError(message(e)); } })(); }, [slug, month]);
+  const pdf = useMemo(() => menuPdf(title, month, (date) => rows.find((row) => dateOnly(row.service_date) === date) || { menu: 'Menu will be posted soon' }), [title, month, rows]);
+  const [pdfUrl, setPdfUrl] = useState('');
+  useEffect(() => { const url = URL.createObjectURL(pdf); setPdfUrl(url); return () => URL.revokeObjectURL(url); }, [pdf]);
+  return <main className={embedded ? 'school-menu-page' : 'public-page'}>{!embedded && <a className="back-link" href="/">← Back to home</a>}<header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><button className="outline" onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button><button className="outline" onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button><button className="primary" onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>{error ? <div className="notice error">Menu not available.</div> : pdfUrl && <object className="menu-pdf" data={pdfUrl} type="application/pdf" aria-label={`${monthLabel(month)} lunch menu PDF`}><p>Your browser can’t display this PDF. <a href={pdfUrl} download={`${title}-${month}-menu.pdf`}>Download the menu PDF</a></p></object>}</main>;
 }
 
 function publicMenuHtml(title: string, month: string, rows: MenuDay[]) {
