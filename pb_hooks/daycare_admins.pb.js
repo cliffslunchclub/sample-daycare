@@ -107,3 +107,27 @@ routerAdd("POST", "/api/move-students", (e) => {
     return e.json(200, { moved: ids.length })
   } catch (_) { return e.json(400, { message: "No students were moved. Check that all students and the destination classroom belong to this school and roster access is enabled." }) }
 })
+
+routerAdd("POST", "/api/delete-students", (e) => {
+  if (!e.auth || !e.auth.getBool("active")) return e.json(403, { message: "Please sign in." })
+  const body = e.requestInfo().body || {}
+  const schoolId = String(body.daycare || "")
+  const ids = Array.isArray(body.students) ? [...new Set(body.students.map(String))] : []
+  if (!schoolId || !ids.length || ids.length > 500) return e.json(400, { message: "Select between 1 and 500 students." })
+  const isClc = e.auth.getString("role") === "clc_admin"
+  if (!isClc && (e.auth.getString("role") !== "daycare_admin" || e.auth.getString("daycare") !== schoolId)) return e.json(403, { message: "School access is required." })
+  try {
+    $app.runInTransaction((tx) => {
+      const school = tx.findRecordById("daycares", schoolId)
+      if (!isClc && !school.getBool("operations_enabled")) throw new Error("School roster tools are disabled.")
+      const students = ids.map((id) => tx.findRecordById("students", id))
+      for (const student of students) if (student.getString("daycare") !== schoolId) throw new Error("Every selected student must belong to this school.")
+      for (const student of students) {
+        const substitutions = tx.findRecordsByFilter("substitutions", "student = {:student}", "", 0, 0, { student: student.id })
+        for (const substitution of substitutions) tx.delete(substitution)
+        tx.delete(student)
+      }
+    })
+    return e.json(200, { deleted: ids.length })
+  } catch (_) { return e.json(400, { message: "No students were deleted. Check that all selected students belong to this school and roster access is enabled." }) }
+})
