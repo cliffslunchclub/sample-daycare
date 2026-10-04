@@ -52,7 +52,8 @@ routerAdd("POST", "/api/substitutions", (e) => {
   const studentId = String(body.student || "")
   const date = String(body.service_date || "")
   const code = String(body.code || "")
-  if (!daycareId || !studentId || !date || !["A", "B", "C", "V"].includes(code)) {
+  const weekday = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][new Date(date + "T12:00:00Z").getUTCDay()]
+  if (!["Monday","Tuesday","Wednesday","Thursday","Friday"].includes(weekday) || !daycareId || !studentId || !date || !["A", "B", "C", "V"].includes(code)) {
     return e.json(400, { message: "Daycare, student, date, and a substitution option are required." })
   }
   try {
@@ -68,13 +69,16 @@ routerAdd("POST", "/api/substitutions", (e) => {
     const student = $app.findRecordById("students", studentId)
     if (student.getString("daycare") !== daycareId) return e.json(400, { message: "Student and daycare do not match." })
     try {
-      $app.findFirstRecordByFilter("substitutions", "student = {:student} && service_date >= {:start} && service_date < {:end}", { student: studentId, start: date + " 00:00:00.000Z", end: date + " 23:59:59.999Z" })
-      return e.json(409, { message: "A substitution is already recorded for this student and date." })
+      $app.findFirstRecordByFilter("substitutions", "student = {:student} && weekday = {:weekday} && recurring = true", { student: studentId, weekday })
+      return e.json(409, { message: "A recurring substitution already exists for this student and weekday. Remove it before adding a replacement." })
     } catch (err) {}
     const record = new Record($app.findCollectionByNameOrId("substitutions"))
     record.set("daycare", daycareId)
     record.set("student", studentId)
     record.set("service_date", date)
+    record.set("weekday", weekday)
+    record.set("recurring", true)
+    record.set("pizza_substitution", weekday === "Friday" && body.pizza_substitution === true)
     record.set("code", code)
     record.set("note", String(body.note || "").trim())
     $app.save(record)

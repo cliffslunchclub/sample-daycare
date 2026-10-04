@@ -3,7 +3,7 @@ import { pb } from './api';
 import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate } from './operations';
 
 type Row = Record<string, any>;
-type Daycare = Row & { id: string; name: string; public_slug: string; allow_substitutions: boolean; sizes_enabled: boolean; operations_enabled: boolean; count_mode: 'roster' | 'manual'; baseline_pizza_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_counts?: Partial<Record<(typeof weekdays)[number], number>> };
+type Daycare = Row & { id: string; name: string; public_slug: string; allow_substitutions: boolean; sizes_enabled: boolean; operations_enabled: boolean; count_mode: 'roster' | 'manual'; clc_managed_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_pizza_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_counts?: Partial<Record<(typeof weekdays)[number], number>> };
 type Student = Row & { id: string; name: string; classroom: string; daycare: string; size: string; service_days: string[]; active: boolean };
 type User = Row & { id: string; role: 'clc_admin' | 'daycare_admin'; daycare: string; display_name: string };
 type MenuDay = Row & { id: string; daycare: string; public_slug: string; service_date: string; menu: string; note: string; closed: boolean; published: boolean; pizza_count: number };
@@ -108,6 +108,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [subStudent, setSubStudent] = useState('');
   const [subDate, setSubDate] = useState('');
   const [subCode, setSubCode] = useState('A');
+  const [pizzaSub, setPizzaSub] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -230,18 +231,18 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
         <div className="toolbar"><div className="week-control"><button className="outline" onClick={() => setWeekAnchor(new Date(weekAnchor.getFullYear(), weekAnchor.getMonth(), weekAnchor.getDate() - 7))}>‹</button><b>{formatRange(dates)}</b><button className="outline" onClick={() => setWeekAnchor(new Date(weekAnchor.getFullYear(), weekAnchor.getMonth(), weekAnchor.getDate() + 7))}>›</button><button className="quiet" onClick={() => setWeekAnchor(new Date())}>This week</button></div><button className="primary" onClick={() => window.print()}>Print US Letter sheet</button></div>
         <WeeklyTable dates={dates} locations={daycares} students={students} subs={subs} menus={menuDays} selected={selected} />
         {current && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
-          {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
+          {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode, pizza_substitution: pizzaSub } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
             <select value={subStudent} required onChange={(e) => setSubStudent(e.target.value)}><option value="">Student</option>{locStudents.filter((s) => s.active && s.daycare === current.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-            <select value={subDate} required onChange={(e) => setSubDate(e.target.value)}><option value="">Weekday</option>{dates.map((d) => <option key={d} value={d}>{dayName(d)} {shortDate(d)}</option>)}</select>
+            <select value={subDate} required onChange={(e) => setSubDate(e.target.value)}><option value="">Weekday</option>{dates.map((d) => <option key={d} value={d}>{dayName(d)}</option>)}</select>
             <select value={subCode} onChange={(e) => setSubCode(e.target.value)}>{['A', 'B', 'C', 'V'].map((code) => <option key={code} value={code}>{code} — {current[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</option>)}</select>
-            <button className="primary">Add</button>
+            <label className="compact-check"><input type="checkbox" checked={pizzaSub} onChange={(e) => setPizzaSub(e.target.checked)} /> Friday pizza substitution</label><button className="primary">Add recurring</button>
           </form>}
-          <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && dates.includes(dateOnly(s.service_date))).map((s) => <div className="list-row" key={s.id}><span>{dayName(dateOnly(s.service_date))} {shortDate(dateOnly(s.service_date))} · {locStudents.find((kid) => kid.id === s.student)?.name || 'Student'} · <b>{s.code}</b></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
+          <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && s.recurring).map((s) => <div className="list-row" key={s.id}><span>{s.weekday} · {locStudents.find((kid) => kid.id === s.student)?.name || 'Student'} · <b>{s.code}</b></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
         </div>}
         <div className="legend">Substitution codes: {['A', 'B', 'C', 'V'].map((c) => <span key={c}><b>{c}</b> {current?.[`sub_${c.toLowerCase()}_label`] || `Option ${c}`}</span>)}</div>
       </section>}
       {tab === 'students' && operationsAvailable && <SchoolStudentsPage current={selectableDaycare} daycares={daycares} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />}
-      {tab === 'summary' && isClc && <section><PageTitle title="Weekly summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><label>Substitution week<input type="date" value={dates[0]} onChange={(e) => { if (e.target.value) setWeekAnchor(new Date(e.target.value + 'T12:00:00')); }} /></label><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} dates={dates} /></section>}
+      {tab === 'summary' && isClc && <section><PageTitle title="Weekly summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /></section>}
       {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
       {tab === 'items' && isClc && <MenuItemsPage items={menuItems} onRefresh={load} error={setError} />}
       {tab === 'locations' && isClc && <LocationsPage daycares={daycares} onCreate={createDaycare} onAddAdmin={addAdmin} onSave={saveDaycare} onRefresh={load} />}
@@ -256,7 +257,7 @@ function SchoolStudentsPage({ current, daycares, isClc, students, classrooms, on
   const [schoolId, setSchoolId] = useState(daycares[0]?.id || '');
   const school = current || daycares.find((d) => d.id === schoolId) || daycares[0];
   return <section>{!current && <div className="toolbar"><label>School<select value={school?.id || ''} onChange={(e) => setSchoolId(e.target.value)}>{daycares.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label></div>}
-    {school && isClc && <CountSettings key={`${school.id}:${school.count_mode}:${JSON.stringify(school.baseline_counts)}:${JSON.stringify(school.baseline_pizza_counts)}`} school={school} onRefresh={onRefresh} error={error} />}
+    {school && isClc && <CountSettings key={`${school.id}:${school.count_mode}:${JSON.stringify(school.baseline_counts)}:${JSON.stringify(school.baseline_pizza_counts)}:${JSON.stringify(school.clc_managed_counts)}`} school={school} onRefresh={onRefresh} error={error} />}
     {school?.count_mode === 'manual' ? <div className="panel empty-state"><h2>{school.name}</h2><p>Counts use the saved weekday totals. CLC can switch this school to students and classrooms above.</p></div> : <StudentsPage current={school || null} students={students.filter((s) => s.daycare === school?.id)} classrooms={classrooms.filter((c) => c.daycare === school?.id)} onRefresh={onRefresh} error={error} />}
   </section>;
 }
@@ -265,30 +266,32 @@ function CountSettings({ school, onRefresh, error }: { school: Daycare; onRefres
   const [mode, setMode] = useState(school.count_mode || 'roster');
   const [counts, setCounts] = useState(school.baseline_counts || {});
   const [pizza, setPizza] = useState(school.baseline_pizza_counts || {});
+  const [managed, setManaged] = useState(school.clc_managed_counts || {});
   const [saving, setSaving] = useState(false);
-  return <form className="panel count-settings" onSubmit={async (e) => { e.preventDefault(); setSaving(true); try { await pb.collection('daycares').update(school.id, { count_mode: mode, baseline_counts: counts, baseline_pizza_counts: pizza }); await onRefresh(); } catch (err) { error(message(err)); } finally { setSaving(false); } }}>
+  return <form className="panel count-settings" onSubmit={async (e) => { e.preventDefault(); setSaving(true); try { await pb.collection('daycares').update(school.id, { count_mode: mode, baseline_counts: counts, baseline_pizza_counts: pizza, clc_managed_counts: managed }); await onRefresh(); } catch (err) { error(message(err)); } finally { setSaving(false); } }}>
     <h2>{school.name} count settings</h2><label>Count method<select value={mode} onChange={(e) => setMode(e.target.value as 'roster' | 'manual')}><option value="roster">Students and classrooms</option><option value="manual">Manual weekday totals</option></select></label>
-    <p className="muted small">Weekday totals repeat each week. Switching methods keeps the existing roster and manual totals.</p>
-    <div className="weekday-counts">{weekdays.map((day) => <div key={day}><b>{day}</b>{mode === 'manual' && <label>Students<input type="number" required min="0" max="10000" step="1" value={counts[day] || 0} onChange={(e) => setCounts({ ...counts, [day]: Number(e.target.value) })} /></label>}<label>Pizza count<input type="number" required min="0" max="10000" step="1" value={pizza[day] || 0} onChange={(e) => setPizza({ ...pizza, [day]: Number(e.target.value) })} /></label></div>)}</div><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save count settings'}</button>
+    <p className="muted small">Weekday totals repeat each week. CLC-managed students are handled directly by CLC and shown separately from school-managed students; both are included in lunch totals. Switching methods keeps the existing roster and manual totals.</p>
+    <div className="weekday-counts">{weekdays.map((day) => <div key={day}><b>{day}</b>{mode === 'manual' && <label>School students<input type="number" required min="0" max="10000" step="1" value={counts[day] || 0} onChange={(e) => setCounts({ ...counts, [day]: Number(e.target.value) })} /></label>}{mode === 'manual' && <label>CLC-managed students<input type="number" required min="0" max="10000" step="1" value={managed[day] || 0} onChange={(e) => setManaged({ ...managed, [day]: Number(e.target.value) })} /></label>}{day === 'Friday' && <label>Pizza count<input type="number" required min="0" max="10000" step="1" value={pizza[day] || 0} onChange={(e) => setPizza({ ...pizza, [day]: Number(e.target.value) })} /></label>}</div>)}</div><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save count settings'}</button>
   </form>;
 }
 
-function WeeklySummary({ locations, students, subs, dates }: { locations: Daycare[]; students: Student[]; subs: Row[]; dates: string[] }) {
-  const data = locations.map((school) => ({ school, days: weekdays.map((day, i) => {
+function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; students: Student[]; subs: Row[] }) {
+  const data = locations.map((school) => ({ school, days: weekdays.map((day) => {
     const roster = school.count_mode === 'manual' ? [] : students.filter((s) => s.active && s.daycare === school.id && s.service_days.includes(day));
-    const replacements = subs.filter((sub) => sub.daycare === school.id && dateOnly(sub.service_date) === dates[i] && roster.some((s) => s.id === sub.student));
-    const total = school.count_mode === 'manual' ? Number(school.baseline_counts?.[day] || 0) : roster.length;
-    return { day, roster, replacements, total, pizza: Number(school.baseline_pizza_counts?.[day] || 0) };
+    const replacements = subs.filter((sub) => sub.daycare === school.id && sub.recurring && sub.weekday === day && roster.some((s) => s.id === sub.student));
+    const managed = school.count_mode === 'manual' ? Number(school.clc_managed_counts?.[day] || 0) : 0;
+    const total = school.count_mode === 'manual' ? Number(school.baseline_counts?.[day] || 0) + managed : roster.length;
+    return { day, roster, replacements, total, managed, pizza: Number(school.baseline_pizza_counts?.[day] || 0) };
   }) }));
   return <div className="weekly-summary"><h2>Cliffs Lunch Club — Weekly Kitchen Summary</h2>
-    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{data.reduce((n, s) => n + s.days[i].total, 0)} lunches</strong><div>Pizza: {data.reduce((n, s) => n + s.days[i].pizza, 0)}</div></td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b><div>{d.total - d.replacements.length} regular{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</div></td>)}</tr>)}</tbody></table>
-    <div className="summary-school-grid">{data.map(({ school, days }) => <div className="summary-school" key={school.id}><h3>{school.name.toUpperCase()} TOTALS</h3><table><thead><tr><th>Day / Size</th><th>Total</th><th>Regular</th><th>Subs</th><th>Substitutions</th></tr></thead><tbody>{days.flatMap((d) => {
+    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{data.reduce((n, s) => n + s.days[i].total, 0)} lunches</strong>{day === 'Friday' && <div>Pizza: {data.reduce((n, s) => n + s.days[i].pizza, 0)}</div>}</td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b><div>{d.managed ? `${d.total - d.managed} school + ${d.managed} CLC-managed` : `${d.total - d.replacements.length} regular`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</div></td>)}</tr>)}</tbody></table>
+    <div className="summary-school-grid">{data.map(({ school, days }) => <div className="summary-school" key={school.id}><h3>{school.name.toUpperCase()} TOTALS</h3><table><thead><tr><th>Day / Size</th><th>Total</th><th>Breakdown</th><th>Subs</th><th>Substitutions / CLC-managed</th></tr></thead><tbody>{days.flatMap((d) => {
       const sizes = school.count_mode !== 'manual' && school.sizes_enabled && d.day !== 'Friday' ? ['small', 'large', ...(d.roster.some((s) => s.size !== 'small' && s.size !== 'large') ? ['standard'] : [])] : ['all'];
-      return sizes.map((size) => { const kids = size === 'all' ? d.roster : d.roster.filter((s) => s.size === size); const replacements = size === 'all' ? d.replacements : d.replacements.filter((r) => kids.some((s) => s.id === r.student)); const total = size === 'all' ? d.total : kids.length;
-        return <tr key={`${d.day}:${size}`}><th>{d.day.slice(0, 3)}{size !== 'all' ? ` ${titleCase(size)}` : ''}</th><td>{total}</td><td>{total - replacements.length}</td><td>{replacements.length}</td><td>{replacements.map((r) => `${students.find((s) => s.id === r.student)?.name || 'Student'} — ${r.code}`).join(' · ') || '—'}</td></tr>;
+      return sizes.map((size, index) => { const kids = size === 'all' ? d.roster : d.roster.filter((s) => s.size === size); const replacements = size === 'all' ? d.replacements.filter((r) => d.day !== 'Friday' || !r.pizza_substitution) : d.replacements.filter((r) => kids.some((s) => s.id === r.student)); const total = size === 'all' ? d.total : kids.length;
+        return <tr key={`${d.day}:${size}`}><th>{d.day.slice(0, 3)}{size !== 'all' ? ` ${titleCase(size)}` : ''}</th>{index === 0 && <td rowSpan={sizes.length}>{d.total}</td>}<td>{total - (d.day === 'Friday' ? d.replacements.length : replacements.length)}</td><td>{replacements.length}</td><td>{replacements.map((r) => `${students.find((s) => s.id === r.student)?.name || 'Student'} — ${r.code}`).join(' · ') || (d.managed ? `${d.managed} managed directly by CLC` : '—')}</td></tr>;
       });
-    })}<tr><th>Weekly pizza</th><td colSpan={4}>{days.filter((d) => d.pizza > 0).map((d) => `${d.day.slice(0, 3)}: ${d.pizza}`).join(' · ') || '0'}</td></tr></tbody></table>{school.allow_substitutions && <div className="summary-legend">{['A','B','C','V'].map((code) => <div key={code}><b>{code}</b> — {school[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</div>)}</div>}</div>)}</div>
-    <p className="summary-footnote">Substitutions are included in lunch totals. Recurring weekday counts; see monthly calendar for menus and closures.</p>
+    })}<tr><th>Friday pizza</th><td>{days[4].pizza}</td><td>{days[4].pizza - days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).map((r) => `${students.find((s) => s.id === r.student)?.name || 'Student'} — ${r.code}`).join(' · ') || '—'}</td></tr></tbody></table>{school.allow_substitutions && <div className="summary-legend">{['A','B','C','V'].map((code) => <div key={code}><b>{code}</b> — {school[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</div>)}</div>}</div>)}</div>
+    <p className="summary-footnote">Substitutions and CLC-managed students are included in lunch totals. Recurring weekday counts; see monthly calendar for menus and closures.</p>
   </div>;
 }
 
@@ -296,8 +299,8 @@ function WeeklyTable({ dates, locations, students, subs, menus, selected }: { da
   const shown = locations.filter((d) => selected === 'all' || d.id === selected);
   const rows = shown.flatMap((location) => dates.map((date) => {
     const serviceStudents = students.filter((s) => s.active && s.daycare === location.id && s.service_days.includes(dayName(date)));
-    const aggregateCount = location.count_mode === 'manual' ? Number(location.baseline_counts?.[dayName(date)] || 0) : 0;
-    const daySubs = subs.filter((s) => s.daycare === location.id && dateOnly(s.service_date) === date);
+    const aggregateCount = location.count_mode === 'manual' ? Number(location.baseline_counts?.[dayName(date)] || 0) + Number(location.clc_managed_counts?.[dayName(date)] || 0) : 0;
+    const daySubs = subs.filter((s) => s.daycare === location.id && (s.recurring ? s.weekday === dayName(date) : dateOnly(s.service_date) === date));
     const closed = menus.some((m) => m.daycare === location.id && dateOnly(m.service_date) === date && m.closed);
     const served = closed || location.count_mode === 'manual' ? [] : serviceStudents;
     const replacements = daySubs.filter((s) => served.some((kid) => kid.id === s.student));
