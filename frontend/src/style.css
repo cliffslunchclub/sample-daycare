@@ -39,3 +39,9 @@
 @media print{.weekly-summary .summary-overview thead th{color:#000!important;font-weight:700!important;background:#fff!important}}
 
 .bergenfield-totals{table-layout:fixed}.bergenfield-totals td:last-child{overflow-wrap:anywhere}.bergenfield-totals th{letter-spacing:0}
+
+.invoice-page input[type=number] { width: 90px; min-width: 70px; }
+.invoice-page textarea { min-height: 55px; }
+.invoice-page td { vertical-align: top; }
+.dated-kitchen-counts { margin-top: 24px; color: #000; }
+@media print { .dated-kitchen-counts { display: none; } }

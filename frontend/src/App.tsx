@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { pb } from './api';
+import { InvoicesPage, NotesRequests, DatedKitchenCounts } from './Billing';
 import { menuPdf } from './menuPdf';
 import { menuExportHtml, menuExportDocx, menuFilename, printMenuHtml } from './menuExport';
 import { weekdays, weekdayForDate as dayName, weekDates, monthCalendarWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName, publishedMenuMonths } from './operations';
@@ -10,7 +11,7 @@ type Student = Row & { id: string; name: string; classroom: string; daycare: str
 type User = Row & { id: string; role: 'clc_admin' | 'daycare_admin'; daycare: string; display_name: string };
 type MenuDay = Row & { id: string; daycare: string; public_slug: string; service_date: string; menu: string; note: string; closed: boolean; published: boolean; pizza_count: number };
 type MenuItem = Row & { id: string; name: string; active: boolean };
-type Tab = 'summary' | 'students' | 'menu' | 'items' | 'users' | 'locations';
+type Tab = 'summary' | 'students' | 'menu' | 'items' | 'users' | 'locations' | 'invoices';
 
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const dateOnly = (value: string) => String(value || '').slice(0, 10);
@@ -220,6 +221,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const selectableDaycare = selected === 'all' ? null : current;
   const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
   if (!isClc) nav.push(['menu', 'Menu']);
+  nav.push(['invoices', 'Invoices']);
   if (isClc) { nav.unshift(['summary', 'Weekly Summary']); nav.push(['menu', 'Monthly Menus'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
@@ -239,7 +241,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     <main className="content">
       {error && <div className="notice error">{error}<button className="quiet" onClick={() => setError('')}>Dismiss</button></div>}
       {busy && <div className="loading">Refreshing…</div>}
-      {tab === 'students' && showStudentTab && <section>{operationsAvailable && <SchoolStudentsPage current={selectableDaycare} daycares={daycares} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />}{current?.allow_substitutions && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
+      {tab === 'students' && showStudentTab && <section>{(operationsAvailable || substitutionsAvailable) && <SchoolStudentsPage current={selectableDaycare} daycares={daycares} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />}{current?.allow_substitutions && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
           {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode, pizza_substitution: false } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
             <select value={subStudent} required onChange={(e) => setSubStudent(e.target.value)}><option value="">Student</option>{locStudents.filter((s) => s.active && s.daycare === current.id).map((s) => <option key={s.id} value={s.id}>{shortStudentName(s.name)}</option>)}</select>
             <select value={subDate} required onChange={(e) => setSubDate(e.target.value)}><option value="">Weekday</option>{dates.map((d) => <option key={d} value={d}>{dayName(d)}</option>)}</select>
@@ -249,7 +251,8 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
           <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && s.recurring).map((s) => <div className="list-row" key={s.id}><span>{s.weekday} · {shortStudentName(locStudents.find((kid) => kid.id === s.student)?.name || 'Student')}: <strong className="substitution-code">{s.code}</strong></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
         </div>}
 </section>}
-      {tab === 'summary' && isClc && <section><PageTitle title="Weekly Summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /></section>}
+      {tab === 'invoices' && <InvoicesPage key={selected} schools={daycares} isClc={isClc} currentId={selected === 'all' ? '' : selected} />}
+      {tab === 'summary' && isClc && <section><PageTitle title="Weekly Summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /><DatedKitchenCounts schools={daycares.filter((d) => selected === 'all' || d.id === selected)} /></section>}
       {tab === 'menu' && !isClc && current && <PublicMenu slug={current.public_slug} embedded />}
       {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
       {tab === 'items' && isClc && <MenuItemsPage items={menuItems} onRefresh={load} error={setError} />}
@@ -266,18 +269,21 @@ function SchoolStudentsPage({ current, daycares, isClc, students, classrooms, on
   const [schoolId, setSchoolId] = useState(daycares[0]?.id || '');
   const school = current || daycares.find((d) => d.id === schoolId) || daycares[0];
   return <section>{!current && <div className="toolbar"><label>School<select value={school?.id || ''} onChange={(e) => setSchoolId(e.target.value)}>{daycares.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label></div>}
+    {school && <NotesRequests key={school.id} school={school} isClc={isClc} students={students} />}
     {school && isClc && <CountSettings key={`${school.id}:${school.count_mode}:${JSON.stringify(school.baseline_counts)}:${JSON.stringify(school.baseline_pizza_counts)}:${JSON.stringify(school.clc_managed_counts)}`} school={school} onRefresh={onRefresh} error={error} />}
-    {school?.count_mode === 'manual' ? <div className="panel empty-state"><h2>{school.name}</h2><p>Counts use the saved weekday totals. CLC can switch this school to students and classrooms above.</p></div> : <StudentsPage current={school || null} students={students.filter((s) => s.daycare === school?.id)} classrooms={classrooms.filter((c) => c.daycare === school?.id)} onRefresh={onRefresh} error={error} />}
+    {school && (isClc || school.operations_enabled) && (school.count_mode === 'manual' ? <div className="panel empty-state"><h2>{school.name}</h2><p>Counts use the saved weekday totals. CLC can switch this school to students and classrooms above.</p></div> : <StudentsPage current={school || null} students={students.filter((s) => s.daycare === school?.id)} classrooms={classrooms.filter((c) => c.daycare === school?.id)} onRefresh={onRefresh} error={error} />)}
   </section>;
 }
 
 function CountSettings({ school, onRefresh, error }: { school: Daycare; onRefresh: () => Promise<void>; error: (s: string) => void }) {
   const [mode, setMode] = useState(school.count_mode || 'roster');
+  const [effective, setEffective] = useState(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date()));
+  const [rate, setRate] = useState(Number(school.invoice_rate ?? 4));
   const [counts, setCounts] = useState(school.baseline_counts || {});
   const [managed, setManaged] = useState(school.clc_managed_counts || {});
   const [saving, setSaving] = useState(false);
-  return <form className="panel count-settings" onSubmit={async (e) => { e.preventDefault(); setSaving(true); try { await pb.collection('daycares').update(school.id, { count_mode: mode, baseline_counts: counts, clc_managed_counts: managed }); await onRefresh(); } catch (err) { error(message(err)); } finally { setSaving(false); } }}>
-    <h2>{school.name} count settings</h2><label>Count method<select value={mode} onChange={(e) => setMode(e.target.value as 'roster' | 'manual')}><option value="roster">Students and Classrooms</option><option value="manual">Manual weekday totals</option></select></label>
+  return <form className="panel count-settings" onSubmit={async (e) => { e.preventDefault(); setSaving(true); try { await pb.collection('daycares').update(school.id, { count_mode: mode, baseline_counts: counts, clc_managed_counts: managed, invoice_rate: rate, billing_effective_date: effective }); await onRefresh(); } catch (err) { error(message(err)); } finally { setSaving(false); } }}>
+    <h2>{school.name} Count Settings</h2><label>Effective Date<input type="date" required value={effective} onChange={e => setEffective(e.target.value)} /></label><label>Meal Rate<input type="number" required min="0" max="1000" step=".01" value={rate} onChange={e => setRate(Number(e.target.value))} /></label><p className="muted">Changes apply to invoices and dated kitchen counts from the effective date. Rates are the same for all sizes and pizza Fridays.</p><label>Count method<select value={mode} onChange={(e) => setMode(e.target.value as 'roster' | 'manual')}><option value="roster">Students and Classrooms</option><option value="manual">Manual weekday totals</option></select></label>
     <p className="muted small">Weekday totals repeat each week. Allergy students are handled directly by CLC and shown separately from school-managed students; both are included in lunch totals. Switching methods keeps the existing roster and manual totals.</p>
     <div className="weekday-counts">{weekdays.map((day) => <div key={day}><b>{day}</b>{mode === 'manual' && <label>School students<input type="number" required min="0" max="10000" step="1" value={counts[day] || 0} onChange={(e) => setCounts({ ...counts, [day]: Number(e.target.value) })} /></label>}{mode === 'manual' && <label>Allergies<input type="number" required min="0" max="10000" step="1" value={managed[day] || 0} onChange={(e) => setManaged({ ...managed, [day]: Number(e.target.value) })} /></label>}</div>)}</div><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save count settings'}</button>
   </form>;
@@ -315,6 +321,7 @@ function StudentEditor({ editing, onClose, children }: { editing: boolean; onClo
 }
 
 function StudentsPage({ current, students, classrooms, onRefresh, error }: { current: Daycare | null; students: Student[]; classrooms: Row[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
+  const [effective, setEffective] = useState(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date()));
   const [sortKey, setSortKey] = useState('classroom');
   const [sortDirection, setSortDirection] = useState(1);
   const [classroomFilter, setClassroomFilter] = useState('');
@@ -338,7 +345,7 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
   async function saveRoom(e: FormEvent) { e.preventDefault(); try { await pb.collection('classrooms').create({ name: roomName.trim(), daycare: current!.id, active: true, age_order: Math.max(0, ...classrooms.map((c) => Number(c.age_order || 0))) + 1 }); setRoomName(''); await onRefresh(); } catch (e) { error(message(e)); } }
   function edit(s: Student) { setEditing(s); setName(s.name); setRoom(s.classroom); setSize(current?.sizes_enabled ? (s.size === 'large' ? 'large' : 'small') : 'standard'); setDays(s.service_days || []); setActive(s.active); }
   function reset() { setEditing(null); setName(''); setRoom(orderedRooms[0]?.id || ''); setSize(current?.sizes_enabled ? 'small' : 'standard'); setDays([]); setActive(true); }
-  async function saveStudent(e: FormEvent) { e.preventDefault(); try { const data = { name: name.trim(), classroom: room, daycare: current!.id, size: current!.sizes_enabled ? (size === 'large' ? 'large' : 'small') : 'standard', service_days: days, active }; if (editing) await pb.collection('students').update(editing.id, data); else await pb.collection('students').create(data); reset(); await onRefresh(); } catch (e) { error(message(e)); } }
+  async function saveStudent(e: FormEvent) { e.preventDefault(); try { const data = { name: name.trim(), classroom: room, daycare: current!.id, size: current!.sizes_enabled ? (size === 'large' ? 'large' : 'small') : 'standard', service_days: days, active, billing_effective_date: effective }; if (editing) await pb.collection('students').update(editing.id, data); else await pb.collection('students').create(data); reset(); await onRefresh(); } catch (e) { error(message(e)); } }
   async function moveStudents() {
     const target = classrooms.find((classroom) => classroom.id === destination && classroom.daycare === current!.id && classroom.active);
     const moves = chosenStudents.filter((student) => student.classroom !== destination);
@@ -363,7 +370,7 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
       <StudentEditor editing={Boolean(editing)} onClose={reset}><h2 id="student-editor-title">{editing ? 'Edit student' : 'Add a student'}</h2><form onSubmit={saveStudent} className="stack-form">
         <label>Student name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Classroom<select value={room} onChange={(e) => setRoom(e.target.value)} required><option value="">Choose classroom</option>{orderedRooms.filter((c) => c.daycare === current!.id && c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label>
         {current.sizes_enabled && <label>Meal size<select value={size === 'large' ? 'large' : 'small'} onChange={(e) => setSize(e.target.value)}><option value="small">Small</option><option value="large">Large</option></select></label>}
-        <fieldset><legend>Recurring service days</legend><div className="day-picks">{weekdays.map((d) => <label key={d}><input type="checkbox" checked={days.includes(d)} onChange={(e) => setDays(e.target.checked ? [...days, d] : days.filter((x) => x !== d))} />{d.slice(0, 3)}</label>)}</div></fieldset>
+        <label>Schedule Effective Date<input type="date" required value={effective} onChange={e => setEffective(e.target.value)} /></label><fieldset><legend>Recurring service days</legend><div className="day-picks">{weekdays.map((d) => <label key={d}><input type="checkbox" checked={days.includes(d)} onChange={(e) => setDays(e.target.checked ? [...days, d] : days.filter((x) => x !== d))} />{d.slice(0, 3)}</label>)}</div></fieldset>
         <label className="checkline"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active for counts</label><div className="form-actions"><button className="primary">{editing ? 'Save changes' : 'Add student'}</button>{editing && <button type="button" className="outline" onClick={reset}>Cancel</button>}</div>
       </form></StudentEditor>
     </div>
