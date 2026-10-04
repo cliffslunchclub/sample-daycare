@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { pb } from './api';
-import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate } from './operations';
+import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName } from './operations';
 
 type Row = Record<string, any>;
 type Daycare = Row & { id: string; name: string; public_slug: string; allow_substitutions: boolean; sizes_enabled: boolean; operations_enabled: boolean; count_mode: 'roster' | 'manual'; clc_managed_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_pizza_counts?: Partial<Record<(typeof weekdays)[number], number>>; baseline_counts?: Partial<Record<(typeof weekdays)[number], number>> };
@@ -94,7 +94,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>(superAdminOnly || (window.location.hostname === 'localhost' && new URLSearchParams(window.location.search).has('admin')) ? 'menu' : 'week');
+  const [tab, setTab] = useState<Tab>((pb.authStore.model as User | null)?.role === 'daycare_admin' && !superAdminOnly ? 'week' : 'summary');
   const [daycares, setDaycares] = useState<Daycare[]>([]);
   const [selected, setSelected] = useState((pb.authStore.model as User | null)?.role === 'clc_admin' ? 'all' : '');
   const [classrooms, setClassrooms] = useState<Row[]>([]);
@@ -115,7 +115,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     const unsubscribe = pb.authStore.onChange((_token, model) => setUser((model as User | null) || null));
     if (pb.authStore.isValid) {
       void pb.collection('users').authRefresh<User>({ requestKey: null })
-        .then((result) => { if (active) setUser(result.record); })
+        .then((result) => { if (active) { setUser(result.record); setTab(result.record.role === 'clc_admin' ? 'summary' : 'week'); } })
         .catch(() => { if (active) { pb.authStore.clear(); setUser(null); } })
         .finally(() => { if (active) setAuthReady(true); });
     } else {
@@ -155,6 +155,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     e.preventDefault(); setError('');
     try {
       const result = await pb.collection('users').authWithPassword<User>(email, password);
+      setTab(result.record.role === 'clc_admin' ? 'summary' : 'week');
       if (superAdminOnly && result.record.role !== 'clc_admin') {
         pb.authStore.clear();
         setError('This sign-in is for CLC super admins. Use your school admin sign-in on your school’s subdomain.');
@@ -206,7 +207,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const selectableDaycare = selected === 'all' ? null : current;
   const operationsAvailable = isClc || Boolean(current?.operations_enabled);
   const nav: [Tab, string][] = operationsAvailable ? [['week', 'Weekly counts'], ['students', 'Students & classrooms']] : [];
-  if (isClc) nav.push(['summary', 'Weekly summary'], ['menu', 'Menus'], ['items', 'Menu items'], ['locations', 'Daycares']);
+  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
@@ -232,12 +233,12 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
         <WeeklyTable dates={dates} locations={daycares} students={students} subs={subs} menus={menuDays} selected={selected} />
         {current && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
           {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode, pizza_substitution: pizzaSub } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
-            <select value={subStudent} required onChange={(e) => setSubStudent(e.target.value)}><option value="">Student</option>{locStudents.filter((s) => s.active && s.daycare === current.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+            <select value={subStudent} required onChange={(e) => setSubStudent(e.target.value)}><option value="">Student</option>{locStudents.filter((s) => s.active && s.daycare === current.id).map((s) => <option key={s.id} value={s.id}>{shortStudentName(s.name)}</option>)}</select>
             <select value={subDate} required onChange={(e) => setSubDate(e.target.value)}><option value="">Weekday</option>{dates.map((d) => <option key={d} value={d}>{dayName(d)}</option>)}</select>
             <select value={subCode} onChange={(e) => setSubCode(e.target.value)}>{['A', 'B', 'C', 'V'].map((code) => <option key={code} value={code}>{code} — {current[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</option>)}</select>
             <label className="compact-check"><input type="checkbox" checked={pizzaSub} onChange={(e) => setPizzaSub(e.target.checked)} /> Friday pizza substitution</label><button className="primary">Add recurring</button>
           </form>}
-          <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && s.recurring).map((s) => <div className="list-row" key={s.id}><span>{s.weekday} · {locStudents.find((kid) => kid.id === s.student)?.name || 'Student'} · <b>{s.code}</b></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
+          <div className="saved-subs">{subs.filter((s) => s.daycare === current.id && s.recurring).map((s) => <div className="list-row" key={s.id}><span>{s.weekday} · {shortStudentName(locStudents.find((kid) => kid.id === s.student)?.name || 'Student')}:<strong className="substitution-code">{s.code}</strong></span><button className="quiet danger-text" onClick={async () => { if (window.confirm('Remove this substitution?')) { try { await pb.collection('substitutions').delete(s.id); await load(); } catch (err) { setError(message(err)); } } }}>Remove</button></div>)}</div>
         </div>}
         <div className="legend">Substitution codes: {['A', 'B', 'C', 'V'].map((c) => <span key={c}><b>{c}</b> {current?.[`sub_${c.toLowerCase()}_label`] || `Option ${c}`}</span>)}</div>
       </section>}
@@ -270,9 +271,13 @@ function CountSettings({ school, onRefresh, error }: { school: Daycare; onRefres
   const [saving, setSaving] = useState(false);
   return <form className="panel count-settings" onSubmit={async (e) => { e.preventDefault(); setSaving(true); try { await pb.collection('daycares').update(school.id, { count_mode: mode, baseline_counts: counts, baseline_pizza_counts: pizza, clc_managed_counts: managed }); await onRefresh(); } catch (err) { error(message(err)); } finally { setSaving(false); } }}>
     <h2>{school.name} count settings</h2><label>Count method<select value={mode} onChange={(e) => setMode(e.target.value as 'roster' | 'manual')}><option value="roster">Students and classrooms</option><option value="manual">Manual weekday totals</option></select></label>
-    <p className="muted small">Weekday totals repeat each week. CLC-managed students are handled directly by CLC and shown separately from school-managed students; both are included in lunch totals. Switching methods keeps the existing roster and manual totals.</p>
-    <div className="weekday-counts">{weekdays.map((day) => <div key={day}><b>{day}</b>{mode === 'manual' && <label>School students<input type="number" required min="0" max="10000" step="1" value={counts[day] || 0} onChange={(e) => setCounts({ ...counts, [day]: Number(e.target.value) })} /></label>}{mode === 'manual' && <label>CLC-managed students<input type="number" required min="0" max="10000" step="1" value={managed[day] || 0} onChange={(e) => setManaged({ ...managed, [day]: Number(e.target.value) })} /></label>}{day === 'Friday' && <label>Pizza count<input type="number" required min="0" max="10000" step="1" value={pizza[day] || 0} onChange={(e) => setPizza({ ...pizza, [day]: Number(e.target.value) })} /></label>}</div>)}</div><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save count settings'}</button>
+    <p className="muted small">Weekday totals repeat each week. Allergy students are handled directly by CLC and shown separately from school-managed students; both are included in lunch totals. Switching methods keeps the existing roster and manual totals.</p>
+    <div className="weekday-counts">{weekdays.map((day) => <div key={day}><b>{day}</b>{mode === 'manual' && <label>School students<input type="number" required min="0" max="10000" step="1" value={counts[day] || 0} onChange={(e) => setCounts({ ...counts, [day]: Number(e.target.value) })} /></label>}{mode === 'manual' && <label>Allergies<input type="number" required min="0" max="10000" step="1" value={managed[day] || 0} onChange={(e) => setManaged({ ...managed, [day]: Number(e.target.value) })} /></label>}{day === 'Friday' && <label>Pizza count<input type="number" required min="0" max="10000" step="1" value={pizza[day] || 0} onChange={(e) => setPizza({ ...pizza, [day]: Number(e.target.value) })} /></label>}</div>)}</div><button className="primary" disabled={saving}>{saving ? 'Saving…' : 'Save count settings'}</button>
   </form>;
+}
+
+function SubstitutionNames({ rows, students }: { rows: Row[]; students: Student[] }) {
+  return <>{rows.map((r, i) => <span className="summary-substitution" key={r.id}>{i > 0 && ' - '}{shortStudentName(students.find((student) => student.id === r.student)?.name || 'Student')}:<strong className="substitution-code">{r.code}</strong></span>)}</>;
 }
 
 function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; students: Student[]; subs: Row[] }) {
@@ -284,14 +289,14 @@ function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; st
     return { day, roster, replacements, total, managed, pizza: Number(school.baseline_pizza_counts?.[day] || 0) };
   }) }));
   return <div className="weekly-summary"><h2>Cliffs Lunch Club — Weekly Kitchen Summary</h2>
-    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{data.reduce((n, s) => n + s.days[i].total, 0)} lunches</strong>{day === 'Friday' && <div>Pizza: {data.reduce((n, s) => n + s.days[i].pizza, 0)}</div>}</td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b><div>{d.managed ? `${d.total - d.managed} school + ${d.managed} CLC-managed` : `${d.total - d.replacements.length} regular`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</div></td>)}</tr>)}</tbody></table>
-    <div className="summary-school-grid">{data.map(({ school, days }) => <div className="summary-school" key={school.id}><h3>{school.name.toUpperCase()} TOTALS</h3><table><thead><tr><th>Day / Size</th><th>Total</th><th>Breakdown</th><th>Subs</th><th>Substitutions / CLC-managed</th></tr></thead><tbody>{days.flatMap((d) => {
+    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{data.reduce((n, s) => n + s.days[i].total, 0)} lunches</strong>{day === 'Friday' && <div>Pizza: {data.reduce((n, s) => n + s.days[i].pizza, 0)}</div>}</td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b><div>{d.managed ? `${d.total - d.managed} school + ${d.managed} allergies` : `${d.total - d.replacements.length} regular`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</div></td>)}</tr>)}</tbody></table>
+    <div className="summary-school-grid">{data.map(({ school, days }) => <div className="summary-school" key={school.id}><h3>{school.name.toUpperCase()} TOTALS</h3><table><thead><tr><th>Day / Size</th><th>Total</th><th>Breakdown</th><th>Subs</th><th>Substitutions / Allergies</th></tr></thead><tbody>{days.flatMap((d) => {
       const sizes = school.count_mode !== 'manual' && school.sizes_enabled && d.day !== 'Friday' ? ['small', 'large', ...(d.roster.some((s) => s.size !== 'small' && s.size !== 'large') ? ['standard'] : [])] : ['all'];
       return sizes.map((size, index) => { const kids = size === 'all' ? d.roster : d.roster.filter((s) => s.size === size); const replacements = size === 'all' ? d.replacements.filter((r) => d.day !== 'Friday' || !r.pizza_substitution) : d.replacements.filter((r) => kids.some((s) => s.id === r.student)); const total = size === 'all' ? d.total : kids.length;
-        return <tr key={`${d.day}:${size}`}><th>{d.day.slice(0, 3)}{size !== 'all' ? ` ${titleCase(size)}` : ''}</th>{index === 0 && <td rowSpan={sizes.length}>{d.total}</td>}<td>{total - (d.day === 'Friday' ? d.replacements.length : replacements.length)}</td><td>{replacements.length}</td><td>{replacements.map((r) => `${students.find((s) => s.id === r.student)?.name || 'Student'} — ${r.code}`).join(' · ') || (d.managed ? `${d.managed} managed directly by CLC` : '—')}</td></tr>;
+        return <tr key={`${d.day}:${size}`}><th>{d.day.slice(0, 3)}{size !== 'all' ? ` ${titleCase(size)}` : ''}</th>{index === 0 && <td rowSpan={sizes.length}>{d.total}</td>}<td>{total - (d.day === 'Friday' ? d.replacements.length : replacements.length)}</td><td>{replacements.length}</td><td>{replacements.length ? <SubstitutionNames rows={replacements} students={students} /> : d.managed ? `${d.managed} allergies` : '—'}</td></tr>;
       });
-    })}<tr><th>Friday pizza</th><td>{days[4].pizza}</td><td>{days[4].pizza - days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).map((r) => `${students.find((s) => s.id === r.student)?.name || 'Student'} — ${r.code}`).join(' · ') || '—'}</td></tr></tbody></table>{school.allow_substitutions && <div className="summary-legend">{['A','B','C','V'].map((code) => <div key={code}><b>{code}</b> — {school[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</div>)}</div>}</div>)}</div>
-    <p className="summary-footnote">Substitutions and CLC-managed students are included in lunch totals. Recurring weekday counts; see monthly calendar for menus and closures.</p>
+    })}<tr><th>Friday pizza</th><td>{days[4].pizza}</td><td>{days[4].pizza - days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.some((r) => r.pizza_substitution) ? <SubstitutionNames rows={days[4].replacements.filter((r) => r.pizza_substitution)} students={students} /> : '—'}</td></tr></tbody></table>{school.allow_substitutions && <div className="summary-legend">{['A','B','C','V'].map((code) => <div key={code}><b>{code}</b> — {school[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</div>)}</div>}</div>)}</div>
+    <p className="summary-footnote">Substitutions and Allergies are included in lunch totals. Recurring weekday counts; see monthly calendar for menus and closures.</p>
   </div>;
 }
 
@@ -314,34 +319,45 @@ function WeeklyTable({ dates, locations, students, subs, menus, selected }: { da
   return <div className="panel report-panel">
     <div className="report-heading"><div><div className="eyebrow">KITCHEN PRODUCTION SHEET</div><h2>Week of {shortDate(dates[0])}</h2></div><div className="totals"><span><b>{total.meals}</b> meals</span><span><b>{total.subs}</b> subs</span><span><b>{total.pizza}</b> pizza</span></div></div>
     <div className="table-scroll"><table className="report-table"><thead><tr><th>Weekday</th><th>Daycare</th><th>Meals</th><th>Regular</th><th>Subs</th><th>Small</th><th>Large</th><th>Pizza</th><th>Substitutions</th></tr></thead>
-      <tbody>{rows.map((r) => <tr key={`${r.location.id}-${r.date}`} className={r.closed ? 'closed-row' : ''}><td><b>{dayName(r.date)}</b><small>{shortDate(r.date)}</small></td><td>{r.location.name}</td><td className="num"><b>{r.closed ? '—' : r.total}</b>{r.closed && <small>Closed</small>}</td><td className="num">{r.closed ? '—' : r.regular}</td><td className="num">{r.closed ? '—' : r.subs}</td><td className="num">{r.closed || !r.location.sizes_enabled ? '—' : r.small}</td><td className="num">{r.closed || !r.location.sizes_enabled ? '—' : r.large}</td><td className="num">{r.closed ? '—' : r.pizza}</td><td>{r.replacementRows.length ? r.replacementRows.map((s) => <span className="sub-name" key={s.id}>{s.studentName} <b>{s.code}</b></span>) : <span className="muted">—</span>}</td></tr>)}</tbody>
+      <tbody>{rows.map((r) => <tr key={`${r.location.id}-${r.date}`} className={r.closed ? 'closed-row' : ''}><td><b>{dayName(r.date)}</b><small>{shortDate(r.date)}</small></td><td>{r.location.name}</td><td className="num"><b>{r.closed ? '—' : r.total}</b>{r.closed && <small>Closed</small>}</td><td className="num">{r.closed ? '—' : r.regular}</td><td className="num">{r.closed ? '—' : r.subs}</td><td className="num">{r.closed || !r.location.sizes_enabled ? '—' : r.small}</td><td className="num">{r.closed || !r.location.sizes_enabled ? '—' : r.large}</td><td className="num">{r.closed ? '—' : r.pizza}</td><td>{r.replacementRows.length ? r.replacementRows.map((s) => <span className="sub-name" key={s.id}>{shortStudentName(s.studentName)}:<strong className="substitution-code">{s.code}</strong></span>) : <span className="muted">—</span>}</td></tr>)}</tbody>
       <tfoot><tr><th colSpan={2}>Week total</th><th>{total.meals}</th><th colSpan={2}>{total.subs} substitutions</th><th colSpan={2}></th><th>{total.pizza}</th><th></th></tr></tfoot></table></div>
     <p className="report-note">Meal totals combine roster schedules with any school-level headcount provided. Closed days are excluded. Substitutions are included in meal totals and shown separately.</p>
   </div>;
 }
 
 function StudentsPage({ current, students, classrooms, onRefresh, error }: { current: Daycare | null; students: Student[]; classrooms: Row[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
+  const [sortKey, setSortKey] = useState('classroom');
+  const [sortDirection, setSortDirection] = useState(1);
+  const orderedRooms = [...classrooms].sort((a, b) => Number(a.age_order || 0) - Number(b.age_order || 0) || a.name.localeCompare(b.name));
+  function sortBy(key: string) { if (key === sortKey) setSortDirection(-sortDirection); else { setSortKey(key); setSortDirection(1); } }
+  function studentSortValue(student: Student): string | number {
+    if (sortKey === 'classroom') return orderedRooms.findIndex((c) => c.id === student.classroom);
+    if (sortKey === 'days') return weekdays.filter((day) => student.service_days.includes(day)).join(', ');
+    if (sortKey === 'active') return student.active ? 1 : 0;
+    return String(student[sortKey] || '');
+  }
+  const sortedStudents = [...students].sort((a, b) => { const av = studentSortValue(a), bv = studentSortValue(b); return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv))) * sortDirection || a.name.localeCompare(b.name); });
   const [roomName, setRoomName] = useState(''); const [editing, setEditing] = useState<Student | null>(null);
   const [name, setName] = useState(''); const [room, setRoom] = useState(''); const [size, setSize] = useState('standard'); const [days, setDays] = useState<string[]>([]); const [active, setActive] = useState(true);
   if (!current) return <Empty title="Choose one daycare" text="Select a single daycare in the top bar to manage its roster." />;
-  async function saveRoom(e: FormEvent) { e.preventDefault(); try { await pb.collection('classrooms').create({ name: roomName.trim(), daycare: current!.id, active: true }); setRoomName(''); await onRefresh(); } catch (e) { error(message(e)); } }
+  async function saveRoom(e: FormEvent) { e.preventDefault(); try { await pb.collection('classrooms').create({ name: roomName.trim(), daycare: current!.id, active: true, age_order: Math.max(0, ...classrooms.map((c) => Number(c.age_order || 0))) + 1 }); setRoomName(''); await onRefresh(); } catch (e) { error(message(e)); } }
   function edit(s: Student) { setEditing(s); setName(s.name); setRoom(s.classroom); setSize(s.size || 'standard'); setDays(s.service_days || []); setActive(s.active); }
-  function reset() { setEditing(null); setName(''); setRoom(classrooms[0]?.id || ''); setSize('standard'); setDays([]); setActive(true); }
+  function reset() { setEditing(null); setName(''); setRoom(orderedRooms[0]?.id || ''); setSize('standard'); setDays([]); setActive(true); }
   async function saveStudent(e: FormEvent) { e.preventDefault(); try { const data = { name: name.trim(), classroom: room, daycare: current!.id, size, service_days: days, active }; if (editing) await pb.collection('students').update(editing.id, data); else await pb.collection('students').create(data); reset(); await onRefresh(); } catch (e) { error(message(e)); } }
   return <section><PageTitle title="Students & classrooms" subtitle={`Manage ${current.name}’s roster and recurring weekly service days.`} />
     <div className="split-grid">
       <div className="panel"><h2>Classrooms</h2><form className="inline-form" onSubmit={saveRoom}><input value={roomName} onChange={(e) => setRoomName(e.target.value)} placeholder="New classroom" required /><button className="primary">Add</button></form>
-        <div className="simple-list">{classrooms.filter((c) => c.daycare === current!.id).map((c) => <div className="list-row" key={c.id}><span>{c.name}</span><span className="muted">{students.filter((s) => s.classroom === c.id).length} students</span><div className="row-actions"><button className="quiet" onClick={async () => { const name = window.prompt('Classroom name', c.name); if (name?.trim() && name.trim() !== c.name) { try { await pb.collection('classrooms').update(c.id, { name: name.trim(), daycare: current!.id }); await onRefresh(); } catch (e) { error(message(e)); } } }}>Edit</button><button className="quiet danger-text" onClick={async () => { if (window.confirm(`Delete ${c.name}? It must have no students.`)) { try { await pb.collection('classrooms').delete(c.id); await onRefresh(); } catch (e) { error(message(e)); } } }}>Delete</button></div></div>)}</div>
+        <div className="simple-list">{orderedRooms.filter((c) => c.daycare === current!.id).map((c) => <div className="list-row classroom-row" key={c.id}><span>{c.name}</span><span className="muted classroom-total">{students.filter((s) => s.classroom === c.id).length} students</span><div className="row-actions"><button className="quiet" onClick={async () => { const name = window.prompt('Classroom name', c.name); if (name?.trim() && name.trim() !== c.name) { try { await pb.collection('classrooms').update(c.id, { name: name.trim(), daycare: current!.id }); await onRefresh(); } catch (e) { error(message(e)); } } }}>Edit</button><button className="quiet danger-text" onClick={async () => { if (window.confirm(`Delete ${c.name}? It must have no students.`)) { try { await pb.collection('classrooms').delete(c.id); await onRefresh(); } catch (e) { error(message(e)); } } }}>Delete</button></div></div>)}</div>
       </div>
       <div className="panel"><h2>{editing ? 'Edit student' : 'Add a student'}</h2><form onSubmit={saveStudent} className="stack-form">
-        <label>Student name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Classroom<select value={room} onChange={(e) => setRoom(e.target.value)} required><option value="">Choose classroom</option>{classrooms.filter((c) => c.daycare === current!.id && c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label>
+        <label>Student name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Classroom<select value={room} onChange={(e) => setRoom(e.target.value)} required><option value="">Choose classroom</option>{orderedRooms.filter((c) => c.daycare === current!.id && c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label>
         {current.sizes_enabled && <label>Meal size<select value={size} onChange={(e) => setSize(e.target.value)}><option value="small">Small</option><option value="large">Large</option><option value="standard">Standard</option></select></label>}
         <fieldset><legend>Recurring service days</legend><div className="day-picks">{weekdays.map((d) => <label key={d}><input type="checkbox" checked={days.includes(d)} onChange={(e) => setDays(e.target.checked ? [...days, d] : days.filter((x) => x !== d))} />{d.slice(0, 3)}</label>)}</div></fieldset>
         <label className="checkline"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active for counts</label><div className="form-actions"><button className="primary">{editing ? 'Save changes' : 'Add student'}</button>{editing && <button type="button" className="outline" onClick={reset}>Cancel</button>}</div>
       </form></div>
     </div>
-    <div className="panel roster-panel"><div className="section-heading"><h2>Roster</h2><span className="muted">{students.filter((s) => s.daycare === current!.id).length} students</span></div><div className="table-scroll"><table><thead><tr><th>Name</th><th>Classroom</th><th>Size</th><th>Weekly days</th><th>Status</th><th></th></tr></thead><tbody>
-      {students.filter((s) => s.daycare === current!.id).map((s) => <tr key={s.id}><td><b>{s.name}</b></td><td>{classrooms.find((c) => c.id === s.classroom)?.name || '—'}</td><td>{current.sizes_enabled ? titleCase(s.size || 'standard') : '—'}</td><td>{s.service_days.join(', ') || 'None'}</td><td><span className={s.active ? 'status active-status' : 'status'}>{s.active ? 'Active' : 'Inactive'}</span></td><td className="row-actions"><button className="quiet" onClick={() => edit(s)}>Edit</button><button className="quiet danger-text" onClick={async () => { if (window.confirm(`Delete ${s.name}?`)) { try { await pb.collection('students').delete(s.id); await onRefresh(); } catch (e) { error(message(e)); } } }}>Delete</button></td></tr>)}
+    <div className="panel roster-panel"><div className="section-heading"><h2>Roster</h2><span className="muted">{students.filter((s) => s.daycare === current!.id).length} students</span></div><div className="table-scroll"><table><thead><tr>{[['classroom','Classroom'],['name','Name'],['size','Size'],['days','Weekly days'],['active','Status']].map(([key,label]) => <th key={key} aria-sort={sortKey === key ? (sortDirection === 1 ? 'ascending' : 'descending') : 'none'}><button className="column-sort" onClick={() => sortBy(key)}>{label}{sortKey === key ? (sortDirection === 1 ? ' ↑' : ' ↓') : ''}</button></th>)}<th></th></tr></thead><tbody>
+      {sortedStudents.filter((s) => s.daycare === current!.id).map((s) => <tr key={s.id}><td>{classrooms.find((c) => c.id === s.classroom)?.name || '—'}</td><td><b>{shortStudentName(s.name)}</b></td><td>{current.sizes_enabled ? titleCase(s.size || 'standard') : '—'}</td><td>{s.service_days.join(', ') || 'None'}</td><td><span className={s.active ? 'status active-status' : 'status'}>{s.active ? 'Active' : 'Inactive'}</span></td><td className="row-actions"><button className="quiet" onClick={() => edit(s)}>Edit</button><button className="quiet danger-text" onClick={async () => { if (window.confirm(`Delete ${shortStudentName(s.name)}?`)) { try { await pb.collection('students').delete(s.id); await onRefresh(); } catch (e) { error(message(e)); } } }}>Delete</button></td></tr>)}
       {!students.some((s) => s.daycare === current!.id) && <tr><td colSpan={6} className="empty-cell">No students yet. Add a student above.</td></tr>}
     </tbody></table></div></div>
   </section>;
