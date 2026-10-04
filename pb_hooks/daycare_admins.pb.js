@@ -131,3 +131,43 @@ routerAdd("POST", "/api/delete-students", (e) => {
     return e.json(200, { deleted: ids.length })
   } catch (_) { return e.json(400, { message: "No students were deleted. Check that all selected students belong to this school and roster access is enabled." }) }
 })
+
+routerAdd("POST", "/api/clone-menu", (e) => {
+  if (!e.auth || !e.auth.getBool("active") || e.auth.getString("role") !== "clc_admin") return e.json(403, { message: "CLC admin access is required." })
+  const body = e.requestInfo().body || {}
+  const sourceId = String(body.source || ""), targetId = String(body.target || ""), month = String(body.month || "")
+  if (!sourceId || !targetId || sourceId === targetId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return e.json(400, { message: "Choose different schools and a valid month." })
+  let copied = 0
+  try {
+    $app.runInTransaction((tx) => {
+      tx.findRecordById("daycares", sourceId)
+      const target = tx.findRecordById("daycares", targetId)
+      const start = month + "-01 00:00:00.000Z"
+      const endDate = new Date(month + "-01T00:00:00Z")
+      endDate.setUTCMonth(endDate.getUTCMonth() + 1)
+      const end = endDate.toISOString().slice(0, 10) + " 00:00:00.000Z"
+      const rows = tx.findRecordsByFilter("menu_days", "daycare = {:school} && service_date >= {:start} && service_date < {:end}", "service_date", 100, 0, { school: sourceId, start, end })
+      if (!rows.length) throw new Error("No saved selections")
+      const existing = tx.findRecordsByFilter("menu_days", "daycare = {:school} && service_date >= {:start} && service_date < {:end}", "", 100, 0, { school: targetId, start, end })
+      for (const row of rows) {
+        const date = row.getString("service_date")
+        const matches = existing.filter((item) => item.getString("service_date").slice(0, 10) === date.slice(0, 10))
+        const record = matches[0] || new Record(tx.findCollectionByNameOrId("menu_days"))
+        for (const duplicate of matches.slice(1)) tx.delete(duplicate)
+        const noService = target.getString("public_slug") === "tle-englewood-cliffs" && new Date(date.slice(0, 10) + "T12:00:00Z").getUTCDay() === 5
+        record.set("daycare", targetId)
+        record.set("daycare_name", target.getString("name"))
+        record.set("public_slug", target.getString("public_slug"))
+        record.set("service_date", date)
+        record.set("menu", noService ? "" : row.getString("menu"))
+        record.set("menu_item", noService ? "" : row.getString("menu_item"))
+        record.set("note", noService ? "No service" : row.getString("note"))
+        record.set("closed", noService || row.getBool("closed"))
+        record.set("published", false)
+        tx.save(record)
+        copied++
+      }
+    })
+    return e.json(200, { copied })
+  } catch (_) { return e.json(400, { message: "No menus were copied. Check the schools and saved source selections, then try again." }) }
+})
