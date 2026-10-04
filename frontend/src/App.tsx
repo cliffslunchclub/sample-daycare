@@ -8,7 +8,7 @@ type Student = Row & { id: string; name: string; classroom: string; daycare: str
 type User = Row & { id: string; role: 'clc_admin' | 'daycare_admin'; daycare: string; display_name: string };
 type MenuDay = Row & { id: string; daycare: string; public_slug: string; service_date: string; menu: string; note: string; closed: boolean; published: boolean; pizza_count: number };
 type MenuItem = Row & { id: string; name: string; active: boolean };
-type Tab = 'week' | 'summary' | 'students' | 'menu' | 'items' | 'locations';
+type Tab = 'week' | 'summary' | 'students' | 'menu' | 'items' | 'users' | 'locations';
 
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
@@ -207,7 +207,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const selectableDaycare = selected === 'all' ? null : current;
   const operationsAvailable = isClc || Boolean(current?.operations_enabled);
   const nav: [Tab, string][] = operationsAvailable ? [['week', 'Weekly counts'], ['students', 'Students & classrooms']] : [];
-  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['locations', 'Daycares']); }
+  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['users', 'School admins'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
@@ -246,6 +246,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
       {tab === 'summary' && isClc && <section><PageTitle title="Weekly summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /></section>}
       {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
       {tab === 'items' && isClc && <MenuItemsPage items={menuItems} onRefresh={load} error={setError} />}
+      {tab === 'users' && isClc && <SchoolAdminsPage daycares={daycares} error={setError} />}
       {tab === 'locations' && isClc && <LocationsPage daycares={daycares} onCreate={createDaycare} onAddAdmin={addAdmin} onSave={saveDaycare} onRefresh={load} />}
     </main>
     <footer>Cliffs Lunch Club <span>·</span> Local working copy</footer>
@@ -288,7 +289,7 @@ function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; st
     return { day, roster, replacements, total, managed, pizza: day === 'Friday' ? Math.ceil(total / 3) : 0 };
   }) }));
   return <div className="weekly-summary"><h2>Cliffs Lunch Club — Weekly Kitchen Summary</h2>
-    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{data.reduce((n, s) => n + s.days[i].total, 0)} lunches</strong>{day === 'Friday' && <div>Pizza: {data.reduce((n, s) => n + s.days[i].pizza, 0)}</div>}</td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b><div>{d.managed ? `${d.total - d.managed} school + ${d.managed} allergies` : `${d.total - d.replacements.length} regular`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</div></td>)}</tr>)}</tbody></table>
+    <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{data.reduce((n, s) => n + s.days[i].total, 0)} lunches</strong>{day === 'Friday' && <div>Pizza: {data.reduce((n, s) => n + s.days[i].pizza, 0)}</div>}</td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b><div>{school.sizes_enabled && school.count_mode === 'roster' ? `${d.roster.filter((s) => s.size === 'large' && !d.replacements.some((r) => r.student === s.id)).length} Large + ${d.roster.filter((s) => s.size === 'small' && !d.replacements.some((r) => r.student === s.id)).length} Small + ${d.replacements.length} Subs` : <>{d.managed ? `${d.total - d.managed} school + ${d.managed} allergies` : `${d.total - d.replacements.length} regular`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</>}</div></td>)}</tr>)}</tbody></table>
     <div className="summary-school-grid">{data.map(({ school, days }) => <div className="summary-school" key={school.id}><h3>{school.name.toUpperCase()} TOTALS</h3><table><thead><tr><th>Day / Size</th><th>Total</th><th>Breakdown</th><th>Subs</th><th>Substitutions / Allergies</th></tr></thead><tbody>{days.flatMap((d) => {
       const sizes = school.count_mode !== 'manual' && school.sizes_enabled && d.day !== 'Friday' ? ['small', 'large'] : ['all'];
       return sizes.map((size, index) => { const kids = size === 'all' ? d.roster : d.roster.filter((s) => s.size === size); const replacements = size === 'all' ? d.replacements.filter((r) => d.day !== 'Friday' || !r.pizza_substitution) : d.replacements.filter((r) => kids.some((s) => s.id === r.student)); const total = size === 'all' ? d.total : kids.length;
@@ -427,6 +428,49 @@ function MenuItemsPage({ items, onRefresh, error }: { items: MenuItem[]; onRefre
       <label>New menu item<textarea value={name} onChange={(e) => setName(e.target.value)} required maxLength={500} placeholder="Main dish and sides" /></label><button className="primary" disabled={!name.trim()}>Add item</button>
     </form>
     <div className="panel">{items.map((item) => <div className="list-row menu-item-row" key={`${item.id}:${item.name}`}><textarea aria-label="Menu item name" defaultValue={item.name} maxLength={500} onBlur={(e) => { if (e.target.value.trim() && e.target.value.trim() !== item.name) void save(item.id, { name: e.target.value.trim() }); }} /><button className="outline" onClick={() => void save(item.id, { active: !item.active })}>{item.active ? 'Archive' : 'Restore'}</button></div>)}</div>
+  </section>;
+}
+
+function SchoolAdminsPage({ daycares, error }: { daycares: Daycare[]; error: (s: string) => void }) {
+  const [accounts, setAccounts] = useState<User[]>([]);
+  const [editing, setEditing] = useState<User | null>(null);
+  const [name, setName] = useState(''); const [email, setEmail] = useState('');
+  const [schoolId, setSchoolId] = useState(daycares[0]?.id || ''); const [password, setPassword] = useState('');
+  const [active, setActive] = useState(true); const [saving, setSaving] = useState(false); const [notice, setNotice] = useState('');
+  async function refresh() {
+    try { setAccounts(await pb.collection('users').getFullList<User>({ filter: 'role = "daycare_admin"', sort: 'display_name', requestKey: null })); } catch (e) { error(message(e)); }
+  }
+  useEffect(() => { void refresh(); }, []);
+  const school = daycares.find((d) => d.id === schoolId);
+  function reset() { setEditing(null); setName(''); setEmail(''); setPassword(''); setActive(true); }
+  function edit(account: User) { setEditing(account); setName(account.display_name || ''); setEmail(account.email); setSchoolId(account.daycare); setActive(Boolean(account.active)); setPassword(''); setNotice(''); }
+  async function save(e: FormEvent) {
+    e.preventDefault(); setSaving(true); setNotice('');
+    try {
+      if (editing) {
+        const data: Row = { display_name: name.trim(), email: email.trim(), daycare: schoolId, active: active && Boolean(school?.operations_enabled), role: 'daycare_admin' };
+        if (password) { data.password = password; data.passwordConfirm = password; }
+        await pb.collection('users').update(editing.id, data);
+      } else {
+        if (!school?.operations_enabled) throw new Error('Enable school operations in Daycares before creating a school admin.');
+        await pb.send('/api/daycare-admins', { method: 'POST', body: { display_name: name.trim(), email: email.trim(), password, daycare: schoolId } });
+      }
+      reset(); await refresh(); setNotice(editing ? 'School admin updated.' : 'School admin created.');
+    } catch (err) { error(message(err)); } finally { setSaving(false); }
+  }
+  return <section><PageTitle title="School admins" subtitle="Create school staff accounts, assign their school, update their details, and manage access." />
+    {notice && <div className="notice">{notice}</div>}
+    <form className="panel staff-admin-form" onSubmit={save}><h2>{editing ? 'Edit school admin' : 'Create school admin'}</h2><div className="staff-admin-fields">
+      <label>Name<input required value={name} onChange={(e) => setName(e.target.value)} /></label><label>Email<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
+      <label>School<select value={schoolId} required onChange={(e) => setSchoolId(e.target.value)}><option value="">Choose school</option>{daycares.map((d) => <option key={d.id} value={d.id}>{d.name}{!d.operations_enabled ? ' (operations off)' : ''}</option>)}</select></label>
+      <label>{editing ? 'New password (optional)' : 'Temporary password'}<input type="password" autoComplete="new-password" required={!editing} minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} /></label>
+    </div>{editing && <label className="checkline"><input type="checkbox" checked={active && Boolean(school?.operations_enabled)} disabled={!school?.operations_enabled} onChange={(e) => setActive(e.target.checked)} /> Account active</label>}
+    {!school?.operations_enabled && <p className="muted small">School operations must be enabled before staff can sign in.</p>}
+    <div className="form-actions"><button className="primary" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save account' : 'Create account'}</button>{editing && <button type="button" className="outline" onClick={reset}>Cancel</button>}</div></form>
+    <div className="panel table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Access</th><th>Actions</th></tr></thead><tbody>{accounts.map((account) => {
+      const location = daycares.find((d) => d.id === account.daycare);
+      return <tr key={account.id}><td>{account.display_name}</td><td>{account.email}</td><td>{location?.name || 'Unassigned'}</td><td>{account.active && location?.operations_enabled ? 'Active' : 'Disabled'}</td><td><div className="row-actions"><button className="outline" onClick={() => edit(account)}>Edit</button><button className="quiet" disabled={!account.active && !location?.operations_enabled} onClick={async () => { try { await pb.collection('users').update(account.id, { active: !account.active }); await refresh(); } catch (e) { error(message(e)); } }}>{account.active ? 'Deactivate' : 'Activate'}</button><button className="quiet danger-text" onClick={async () => { if (!window.confirm(`Delete school admin ${account.display_name || account.email}?`)) return; try { await pb.collection('users').delete(account.id); if (editing?.id === account.id) reset(); await refresh(); } catch (e) { error(message(e)); } }}>Delete</button></div></td></tr>;
+    })}{!accounts.length && <tr><td colSpan={5} className="empty-cell">No school admin accounts yet.</td></tr>}</tbody></table></div>
   </section>;
 }
 
