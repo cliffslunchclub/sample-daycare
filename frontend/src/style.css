@@ -37,3 +37,5 @@
 .danger-button{background:#b6382e;color:#fff;border:1px solid #b6382e;border-radius:9px;padding:.65rem .9rem;font-weight:700}.danger-button:hover{background:#952c24}.danger-button:disabled{opacity:.5;cursor:not-allowed}
 
 @media print{.weekly-summary .summary-overview thead th{color:#000!important;font-weight:700!important;background:#fff!important}}
+
+.bergenfield-totals{table-layout:fixed}.bergenfield-totals td:last-child{overflow-wrap:anywhere}.bergenfield-totals th{letter-spacing:0}
