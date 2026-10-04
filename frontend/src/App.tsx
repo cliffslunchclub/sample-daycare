@@ -212,7 +212,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const selectableDaycare = selected === 'all' ? null : current;
   const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
   if (!isClc) nav.push(['menu', 'Menu']);
-  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
+  if (isClc) { nav.unshift(['summary', 'Weekly summary']); nav.push(['menu', 'Menus'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
@@ -404,11 +404,11 @@ function MenuItemsPage({ items, onRefresh, error }: { items: MenuItem[]; onRefre
   async function save(id: string, values: Partial<MenuItem>) {
     try { await pb.collection('menu_items').update(id, values); await onRefresh(); } catch (e) { error(message(e)); }
   }
-  return <section className="menu-items-page"><PageTitle title="Menu items" subtitle="Shared choices for all schools. Changing an item leaves already saved menus unchanged." />
+  return <section className="menu-items-page"><PageTitle title="Menu Items" subtitle="Shared choices for all schools. Changing an item leaves already saved menus unchanged." />
     <form className="panel inline-form menu-item-add" onSubmit={async (e) => { e.preventDefault(); try { await pb.collection('menu_items').create({ name: name.trim(), active: true }); setName(''); await onRefresh(); } catch (err) { error(message(err)); } }}>
       <label>New menu item<textarea value={name} onChange={(e) => setName(e.target.value)} required maxLength={500} placeholder="Main dish and sides" /></label><button className="primary" disabled={!name.trim()}>Add item</button>
     </form>
-    <div className="panel">{items.map((item) => <div className="list-row menu-item-row" key={`${item.id}:${item.name}`}><textarea aria-label="Menu item name" defaultValue={item.name} maxLength={500} onBlur={(e) => { if (e.target.value.trim() && e.target.value.trim() !== item.name) void save(item.id, { name: e.target.value.trim() }); }} /><button className="outline" onClick={() => void save(item.id, { active: !item.active })}>{item.active ? 'Archive' : 'Restore'}</button></div>)}</div>
+    <div className="panel">{items.map((item) => <div className="list-row menu-item-row" key={`${item.id}:${item.name}`}><textarea aria-label="Menu item name" defaultValue={item.name} maxLength={500} onBlur={(e) => { if (e.target.value.trim() && e.target.value.trim() !== item.name) void save(item.id, { name: e.target.value.trim() }); }} /><button className="outline" onClick={() => void save(item.id, { active: !item.active })}>{item.active ? 'Archive' : 'Restore'}</button><button className="quiet danger-text" onClick={async () => { if (!window.confirm('Delete this menu item? Saved daily menus keep their existing text.')) return; try { await pb.collection('menu_items').delete(item.id); await onRefresh(); } catch (err) { error(message(err)); } }}>Delete</button></div>)}</div>
   </section>;
 }
 
