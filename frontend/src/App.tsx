@@ -47,8 +47,8 @@ function App() {
   const schoolSlug = schoolSlugForPage(params);
   const isSuperAdminDomain = window.location.hostname.toLowerCase().split('.')[0] === 'admin';
   const publicSlug = params.get('menu');
-  if (publicSlug) return <PublicMenu slug={publicSlug} />;
-  if (params.get('parents') === '1') return schoolSlug ? <PublicMenu slug={schoolSlug} /> : <SchoolSelection />;
+  if (publicSlug) return <SchoolSelection />;
+  if (params.get('parents') === '1') return <SchoolSelection />;
   if (params.get('admin') === '1' || isSuperAdminDomain) return <AdminApp superAdminOnly={isSuperAdminDomain} />;
   return <LandingPage schoolSlug={schoolSlug} />;
 }
@@ -62,7 +62,7 @@ function LandingPage({ schoolSlug }: { schoolSlug: string }) {
       <h1><strong>Welcome to Cliffs Lunch Club</strong></h1>
       <p>Choose how you’d like to continue.</p>
       <div className="landing-choices">
-        <a className="landing-choice" href={schoolSlug ? `/?menu=${encodeURIComponent(schoolSlug)}` : '/?parents=1'}><span className="choice-kicker">FOR PARENTS</span><h2>View the Lunch Menu</h2><p>{schoolName ? `Open the latest menu for ${schoolName}.` : 'Choose your school to see its latest lunch menu.'}</p><b>{schoolName ? 'View menu' : 'Find your school'} <span aria-hidden="true">→</span></b></a>
+        <a className="landing-choice" href="/?parents=1"><span className="choice-kicker">FOR PARENTS</span><h2>View the Lunch Menu</h2><p>{schoolName ? `Open the latest menu for ${schoolName}.` : 'Choose your school to see its latest lunch menu.'}</p><b>Find your school <span aria-hidden="true">→</span></b></a>
         <a className="landing-choice admin-choice" href="/?admin=1"><span className="choice-kicker">FOR SCHOOL STAFF</span><h2>School Admin Sign In</h2><p>Sign in to manage your school’s lunch operations.</p><b>Admin sign in <span aria-hidden="true">→</span></b></a>
       </div>
     </section>
@@ -71,6 +71,7 @@ function LandingPage({ schoolSlug }: { schoolSlug: string }) {
 }
 
 function SchoolSelection() {
+  const [selectedSchool, setSelectedSchool] = useState('');
   const [schools, setSchools] = useState<{ name: string; public_slug: string }[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -79,12 +80,13 @@ function SchoolSelection() {
       .then(setSchools).catch(() => setError('School menus are unavailable right now. Please try again.'))
       .finally(() => setLoading(false));
   }, []);
-  return <main className="school-select-page">
+  return <main className="school-select-page parent-school-selection">
     <a className="back-link" href="/">← Back to home</a>
     <div className="eyebrow">FOR PARENTS</div><h1>Choose your school</h1><p className="muted">Select a school to view its lunch menu.</p>
     {error && <div className="notice error">{error}</div>}
     {loading && <p className="muted">Loading schools…</p>}
-    {!loading && !error && <div className="school-list">{schools.map((school) => <a className="school-option" key={school.public_slug} href={schoolMenuUrl(school.public_slug)}><span>{school.name}</span><b aria-hidden="true">→</b></a>)}{!schools.length && <div className="panel empty-state"><p>No school menus are available yet.</p></div>}</div>}
+    {!loading && !error && <><label>School<select value={selectedSchool} onChange={(event) => setSelectedSchool(event.target.value)}><option value="">Select your school</option>{schools.map((school) => <option key={school.public_slug} value={school.public_slug}>{school.name}</option>)}</select></label>{!schools.length && <div className="panel empty-state"><p>No school menus are available yet.</p></div>}{selectedSchool && <div className="parent-selected-menu"><PublicMenu key={selectedSchool} slug={selectedSchool} embedded /></div>}</>}
+
   </main>;
 }
 
