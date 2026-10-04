@@ -31,3 +31,5 @@
 .menu-pdf-frame{margin:1.5rem 0 2rem;padding:1.25rem;background:#fff;border:1px solid var(--line);border-radius:16px}.menu-pdf-frame .menu-pdf{border-radius:8px}@media(max-width:640px){.menu-pdf-frame{margin:1rem 0 1.5rem;padding:.65rem}}
 
 .weekly-summary,.weekly-summary *{color:#000!important}.weekly-summary .summary-overview thead th{background:#e9ece8!important}@media print{.weekly-summary,.weekly-summary *{color:#000!important}.weekly-summary .summary-overview thead th{background:#e9ece8!important}}
+
+.roster-filter{display:block;margin-top:.5rem;width:100%;font-size:.8rem;text-transform:none}.bulk-classroom-move{display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap;margin-top:1.25rem;padding-top:1rem;border-top:1px solid var(--line)}.bulk-classroom-move>span{align-self:center}
