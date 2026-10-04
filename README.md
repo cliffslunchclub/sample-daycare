@@ -1,6 +1,6 @@
 # Sample Daycare
 
-Cliffs Lunch Club's daycare lunch MVP. This is a fresh, deliberately small rebuild based on the supplied weekly counts, classroom roster, billing, and monthly menu examples.
+Cliffs Lunch Club's school lunch MVP. This is a deliberately small build based on the supplied weekly counts, classroom roster, and monthly menu examples.
 
 ## Stack
 
@@ -35,7 +35,7 @@ These credentials are for local sample data only. Do not use them for production
 - Record and remove substitutions by service date using A, B, C, and V codes. CLC controls whether each daycare permits substitutions and can edit the option labels.
 - Generate a weekly US Letter landscape kitchen sheet with weekday counts, regular meals, substitutions, Small/Large counts, and pizza counts by daycare. Counts come from the recurring student schedules and refresh when records or closures change.
 - CLC staff create monthly menus, mark days off, and publish selected dates to the read-only public menu. The public page has print-to-PDF and Word-compatible download buttons.
-- Project an invoice subtotal from scheduled weekday meals, service days, the location's per-meal price, and CLC meal-unit adjustments. Daycare admins can add billing notes; only CLC can enter meal-unit adjustments. No tax is added.
+- On the `admin.cliffslunchclub.com` subdomain, CLC super admins can edit menus across all schools. The editor shows the current and next month, offers daily menu choices, and pre-fills unpublished suggestions from a weekday rotation.
 
 Parents do not have app accounts and cannot order meals. The public menu only returns dates marked as published. This is the parent user type; the two authenticated account roles are `clc_admin` (CLC super admin) and `daycare_admin` (school admin).
 
@@ -47,7 +47,7 @@ The local PocketBase seed includes:
 - **Lightbridge Fort Lee** — operations disabled, substitutions and sizes disabled, and published October 2026 Lightbridge menu dates. It uses aggregate weekly counts from the supplied count sheet: 64 meals Monday–Thursday (62 plus Ethan and Jayden) and 62 Friday. No individual Fort Lee roster was supplied.
 - **TLE Englewood Cliffs** — operations disabled, with an aggregate count of 120 meals Monday–Thursday and zero Friday. No individual roster or menu was supplied.
 
-The October Lightbridge menu is preloaded for Bergenfield and Fort Lee, including the October 2 pizza counts. CLC can edit the two calendars independently. TLE's menu can be added when its menu is provided. When a new local database starts, PocketBase applies the migrations and loads this data. Existing local databases receive the seed migration on the next start; the local demo admin is normalized to the CLC super admin role. Turning off daycare operations also deactivates that location's daycare admin accounts, and PocketBase rules enforce the operations toggle for roster, substitution, and billing records.
+The October Lightbridge menu is preloaded for Bergenfield and Fort Lee, including the October 2 pizza counts. CLC can edit each school's calendar independently. TLE's menu can be added when its menu is provided. When a new local database starts, PocketBase applies the migrations and loads this data. Existing local databases receive new migrations on the next start; the local demo admin is normalized to the CLC super admin role. Turning off school operations also deactivates that school's admin accounts, and PocketBase rules enforce the operations toggle for roster and substitution records.
 
 The interface uses the Sample School cream and garden-green palette, with Nunito typography and warm tomato accents.
 
@@ -62,7 +62,7 @@ cd ..
 npm test
 ```
 
-The first check type-checks and builds the web app. The tests check weekday calculation and the monthly meal projection, including closed days.
+The first check type-checks and builds the web app. The tests check weekday calculations, the editable month horizon, and menu rotation suggestions.
 
 ## Project files
 

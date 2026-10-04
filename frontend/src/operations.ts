@@ -1,6 +1,46 @@
 export const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const;
 export type Weekday = typeof weekdays[number];
-export type ScheduledStudent = { active: boolean; service_days: string[] };
+
+export const menuItems = [
+  'Grilled Chicken & Veggies\nSteamed Rice',
+  'Broccoli Butter Pasta\nGarlic Bread',
+  'Beef & Veggie Bolognese Pasta\nGarlic Bread',
+  'Chicken Nuggets\nTater Tots',
+  'Angus Beef Sliders\nFries',
+  'Chicken Penne alla Vodka\nPeas & Carrots',
+  'Bowtie Pasta with Peas & Meatballs',
+  'Bowtie Chicken Alfredo\nPeas & Carrots',
+  'Pizza\nSweet Potato Fries',
+] as const;
+
+const menuCycles: Record<Weekday, readonly string[]> = {
+  Monday: [menuItems[0]],
+  Tuesday: [menuItems[1], menuItems[2]],
+  Wednesday: [menuItems[3], menuItems[4]],
+  Thursday: [menuItems[5], menuItems[6], menuItems[7]],
+  Friday: [menuItems[8]],
+};
+
+export function menuMonthOptions(today: Date = new Date()): string[] {
+  const current = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  return [current, nextMonth(current)];
+}
+
+export function nextMonth(month: string): string {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const date = new Date(year, monthNumber, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function suggestedMenuForDate(value: string): string {
+  const weekday = weekdayForDate(value);
+  const [year, month, day] = value.split('-').map(Number);
+  const date = Date.UTC(year, month - 1, day);
+  const anchor = Date.UTC(2026, 9, 5); // The Monday before the supplied October menu.
+  const cycleWeek = Math.floor((date - anchor) / (7 * 24 * 60 * 60 * 1000));
+  const cycle = menuCycles[weekday];
+  return cycle[((cycleWeek % cycle.length) + cycle.length) % cycle.length];
+}
 
 export function isoDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -30,14 +70,4 @@ export function monthWeekdays(month: string): string[] {
     if (date.getDay() !== 0 && date.getDay() !== 6) dates.push(isoDate(date));
   }
   return dates;
-}
-
-export function monthlyMealUnits(students: ScheduledStudent[], month: string, closedDates: Set<string> = new Set(), baselineCounts: Partial<Record<Weekday, number>> = {}) {
-  const dates = monthWeekdays(month).filter((date) => !closedDates.has(date));
-  const breakdown = weekdays.map((weekday) => {
-    const serviceDates = dates.filter((date) => weekdayForDate(date) === weekday);
-    const studentsPerDay = students.filter((student) => student.active && student.service_days.includes(weekday)).length + Number(baselineCounts[weekday] || 0);
-    return { weekday, serviceDates, studentsPerDay, units: serviceDates.length * studentsPerDay };
-  });
-  return { breakdown, totalUnits: breakdown.reduce((total, day) => total + day.units, 0) };
 }
