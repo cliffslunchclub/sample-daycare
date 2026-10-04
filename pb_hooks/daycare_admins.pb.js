@@ -15,7 +15,10 @@ routerAdd("POST", "/api/daycare-admins", (e) => {
     return e.json(400, { message: "An account with that email already exists." })
   } catch (err) {}
   try {
-    $app.findRecordById("daycares", daycareId)
+    const daycare = $app.findRecordById("daycares", daycareId)
+    if (!daycare.getBool("operations_enabled")) {
+      return e.json(400, { message: "Enable daycare operations before creating a daycare admin." })
+    }
     const record = new Record($app.findCollectionByNameOrId("users"))
     record.set("email", email)
     record.set("password", password)
@@ -45,11 +48,13 @@ routerAdd("POST", "/api/substitutions", (e) => {
   }
   try {
     const daycare = $app.findRecordById("daycares", daycareId)
+    if (!daycare.getBool("allow_substitutions")) {
+      return e.json(403, { message: "Substitutions are disabled for this daycare." })
+    }
     if (e.auth.getString("role") !== "clc_admin") {
       if (e.auth.getString("role") !== "daycare_admin" || e.auth.getString("daycare") !== daycareId) {
         return e.json(403, { message: "Daycare access denied." })
       }
-      if (!daycare.getBool("allow_substitutions")) return e.json(403, { message: "Substitutions are disabled for this daycare." })
     }
     const student = $app.findRecordById("students", studentId)
     if (student.getString("daycare") !== daycareId) return e.json(400, { message: "Student and daycare do not match." })

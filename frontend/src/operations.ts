@@ -32,11 +32,11 @@ export function monthWeekdays(month: string): string[] {
   return dates;
 }
 
-export function monthlyMealUnits(students: ScheduledStudent[], month: string, closedDates: Set<string> = new Set()) {
+export function monthlyMealUnits(students: ScheduledStudent[], month: string, closedDates: Set<string> = new Set(), baselineCounts: Partial<Record<Weekday, number>> = {}) {
   const dates = monthWeekdays(month).filter((date) => !closedDates.has(date));
   const breakdown = weekdays.map((weekday) => {
     const serviceDates = dates.filter((date) => weekdayForDate(date) === weekday);
-    const studentsPerDay = students.filter((student) => student.active && student.service_days.includes(weekday)).length;
+    const studentsPerDay = students.filter((student) => student.active && student.service_days.includes(weekday)).length + Number(baselineCounts[weekday] || 0);
     return { weekday, serviceDates, studentsPerDay, units: serviceDates.length * studentsPerDay };
   });
   return { breakdown, totalUnits: breakdown.reduce((total, day) => total + day.units, 0) };

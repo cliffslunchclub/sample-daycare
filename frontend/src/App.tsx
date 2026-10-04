@@ -3,7 +3,7 @@ import { pb } from './api';
 import { weekdays, weekdayForDate as dayName, weekDates, monthWeekdays as monthDates, monthlyMealUnits } from './operations';
 
 type Row = Record<string, any>;
-type Daycare = Row & { id: string; name: string; public_slug: string; meal_price: number; allow_substitutions: boolean; sizes_enabled: boolean };
+type Daycare = Row & { id: string; name: string; public_slug: string; meal_price: number; allow_substitutions: boolean; sizes_enabled: boolean; operations_enabled: boolean; baseline_counts?: Partial<Record<(typeof weekdays)[number], number>> };
 type Student = Row & { id: string; name: string; classroom: string; daycare: string; size: string; service_days: string[]; active: boolean };
 type User = Row & { id: string; role: 'clc_admin' | 'daycare_admin'; daycare: string; display_name: string };
 type MenuDay = Row & { id: string; daycare: string; public_slug: string; service_date: string; menu: string; note: string; closed: boolean; published: boolean; pizza_count: number };
@@ -84,11 +84,12 @@ function AdminApp() {
       const existing = new Set(daycares.map((d) => d.public_slug));
       let slug = base || 'daycare'; let n = 2;
       while (existing.has(slug)) slug = `${base}-${n++}`;
-      const record = await pb.collection('daycares').create({ name: name.trim(), public_slug: slug, active: true, allow_substitutions: false, sizes_enabled: false, meal_price: 7.25, sub_a_label: 'Option A', sub_b_label: 'Option B', sub_c_label: 'Option C', sub_v_label: 'Vegetarian' });
+      const record = await pb.collection('daycares').create({ name: name.trim(), public_slug: slug, active: true, operations_enabled: true, baseline_counts: {}, allow_substitutions: false, sizes_enabled: false, meal_price: 7.25, sub_a_label: 'Option A', sub_b_label: 'Option B', sub_c_label: 'Option C', sub_v_label: 'Vegetarian' });
       setSelected(record.id); await load();
     } catch (e) { setError(message(e)); }
   }
   async function addAdmin(daycare: Daycare) {
+    if (!daycare.operations_enabled) { setError('Enable daycare operations before creating a daycare admin.'); return; }
     const name = window.prompt(`Admin name for ${daycare.name}`); if (!name?.trim()) return;
     const accountEmail = window.prompt('Admin email'); if (!accountEmail?.trim()) return;
     const accountPassword = window.prompt('Temporary password (at least 12 characters)'); if (!accountPassword) return;
@@ -97,14 +98,22 @@ function AdminApp() {
   }
   async function saveDaycare(values: Partial<Daycare>) {
     if (!current || !isClc) return;
-    try { await pb.collection('daycares').update(current.id, values); await load(); }
+    try {
+      await pb.collection('daycares').update(current.id, values);
+      if (values.operations_enabled === false) {
+        const admins = await pb.collection('users').getFullList<User>({ filter: pb.filter('daycare = {:daycare} && role = {:role}', { daycare: current.id, role: 'daycare_admin' }) });
+        await Promise.all(admins.map((admin) => pb.collection('users').update(admin.id, { active: false })));
+      }
+      await load();
+    }
     catch (e) { setError(message(e)); }
   }
 
   const locStudents = students.filter((s) => selected === 'all' ? true : s.daycare === selected);
   const locClassrooms = classrooms.filter((c) => selected === 'all' ? true : c.daycare === selected);
   const selectableDaycare = selected === 'all' ? null : current;
-  const nav: [Tab, string][] = [['week', 'Weekly counts'], ['students', 'Students & classrooms'], ['billing', 'Billing']];
+  const operationsAvailable = isClc || Boolean(current?.operations_enabled);
+  const nav: [Tab, string][] = operationsAvailable ? [['week', 'Weekly counts'], ['students', 'Students & classrooms'], ['billing', 'Billing']] : [];
   if (isClc) nav.push(['menu', 'Menus'], ['locations', 'Daycares']);
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
@@ -124,7 +133,8 @@ function AdminApp() {
     <main className="content">
       {error && <div className="notice error">{error}<button className="quiet" onClick={() => setError('')}>Dismiss</button></div>}
       {busy && <div className="loading">Refreshing…</div>}
-      {tab === 'week' && <section>
+      {!isClc && !operationsAvailable && <section><PageTitle title="Menu access" subtitle="Your daycare's published menu is available without signing in." /><div className="panel empty-state"><p>Daycare operations are turned off for this location. Ask a CLC super admin to enable staff access if your team needs roster, weekly counts, or billing tools.</p></div></section>}
+      {tab === 'week' && operationsAvailable && <section>
         <PageTitle title="Weekly kitchen counts" subtitle="Counts follow each student's recurring service days. Changes to the roster update the totals automatically." />
         <div className="toolbar"><div className="week-control"><button className="outline" onClick={() => setWeekAnchor(new Date(weekAnchor.getFullYear(), weekAnchor.getMonth(), weekAnchor.getDate() - 7))}>‹</button><b>{formatRange(dates)}</b><button className="outline" onClick={() => setWeekAnchor(new Date(weekAnchor.getFullYear(), weekAnchor.getMonth(), weekAnchor.getDate() + 7))}>›</button><button className="quiet" onClick={() => setWeekAnchor(new Date())}>This week</button></div><button className="primary" onClick={() => window.print()}>Print US Letter sheet</button></div>
         <WeeklyTable dates={dates} locations={daycares} students={students} subs={subs} menus={menuDays} selected={selected} />
@@ -139,9 +149,9 @@ function AdminApp() {
         </div>}
         <div className="legend">Substitution codes: {['A', 'B', 'C', 'V'].map((c) => <span key={c}><b>{c}</b> {current?.[`sub_${c.toLowerCase()}_label`] || `Option ${c}`}</span>)}</div>
       </section>}
-      {tab === 'students' && <StudentsPage current={selectableDaycare} students={locStudents} classrooms={locClassrooms} onRefresh={load} error={setError} />}
+      {tab === 'students' && operationsAvailable && <StudentsPage current={selectableDaycare} students={locStudents} classrooms={locClassrooms} onRefresh={load} error={setError} />}
       {tab === 'menu' && isClc && <MenuPage current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
-      {tab === 'billing' && <BillingPage current={selectableDaycare} daycares={daycares} students={locStudents} menuDays={menuDays} notes={billingNotes} month={month} setMonth={setMonth} onRefresh={load} error={setError} isClc={isClc} />}
+      {tab === 'billing' && operationsAvailable && <BillingPage current={selectableDaycare} daycares={daycares} students={locStudents} menuDays={menuDays} notes={billingNotes} month={month} setMonth={setMonth} onRefresh={load} error={setError} isClc={isClc} />}
       {tab === 'locations' && isClc && <LocationsPage daycares={daycares} onCreate={createDaycare} onAddAdmin={addAdmin} onSave={saveDaycare} onRefresh={load} />}
     </main>
     <footer>Cliffs Lunch Club <span>·</span> Local working copy</footer>
@@ -154,11 +164,13 @@ function WeeklyTable({ dates, locations, students, subs, menus, selected }: { da
   const shown = locations.filter((d) => selected === 'all' || d.id === selected);
   const rows = shown.flatMap((location) => dates.map((date) => {
     const serviceStudents = students.filter((s) => s.active && s.daycare === location.id && s.service_days.includes(dayName(date)));
+    const aggregateCount = Number(location.baseline_counts?.[dayName(date)] || 0);
     const daySubs = subs.filter((s) => s.daycare === location.id && dateOnly(s.service_date) === date);
     const closed = menus.some((m) => m.daycare === location.id && dateOnly(m.service_date) === date && m.closed);
     const served = closed ? [] : serviceStudents;
     const replacements = daySubs.filter((s) => served.some((kid) => kid.id === s.student));
-    return { location, date, total: served.length, subs: replacements.length, regular: served.length - replacements.length,
+    const totalMeals = served.length + (closed ? 0 : aggregateCount);
+    return { location, date, total: totalMeals, subs: replacements.length, regular: totalMeals - replacements.length,
       small: served.filter((s) => s.size === 'small').length, large: served.filter((s) => s.size === 'large').length,
       pizza: Number(menus.find((m) => m.daycare === location.id && dateOnly(m.service_date) === date)?.pizza_count || 0),
       closed, replacementRows: replacements.map((s): Row => ({ ...s, studentName: students.find((kid) => kid.id === s.student)?.name || 'Student' })) };
@@ -167,9 +179,9 @@ function WeeklyTable({ dates, locations, students, subs, menus, selected }: { da
   return <div className="panel report-panel">
     <div className="report-heading"><div><div className="eyebrow">KITCHEN PRODUCTION SHEET</div><h2>Week of {shortDate(dates[0])}</h2></div><div className="totals"><span><b>{total.meals}</b> meals</span><span><b>{total.subs}</b> subs</span><span><b>{total.pizza}</b> pizza</span></div></div>
     <div className="table-scroll"><table className="report-table"><thead><tr><th>Weekday</th><th>Daycare</th><th>Meals</th><th>Regular</th><th>Subs</th><th>Small</th><th>Large</th><th>Pizza</th><th>Substitutions</th></tr></thead>
-      <tbody>{rows.map((r) => <tr key={`${r.location.id}-${r.date}`} className={r.closed ? 'closed-row' : ''}><td><b>{dayName(r.date)}</b><small>{shortDate(r.date)}</small></td><td>{r.location.name}</td><td className="num"><b>{r.closed ? '—' : r.total}</b>{r.closed && <small>Closed</small>}</td><td className="num">{r.closed ? '—' : r.regular}</td><td className="num">{r.closed ? '—' : r.subs}</td><td className="num">{r.closed ? '—' : r.small}</td><td className="num">{r.closed ? '—' : r.large}</td><td className="num">{r.closed ? '—' : r.pizza}</td><td>{r.replacementRows.length ? r.replacementRows.map((s) => <span className="sub-name" key={s.id}>{s.studentName} <b>{s.code}</b></span>) : <span className="muted">—</span>}</td></tr>)}</tbody>
+      <tbody>{rows.map((r) => <tr key={`${r.location.id}-${r.date}`} className={r.closed ? 'closed-row' : ''}><td><b>{dayName(r.date)}</b><small>{shortDate(r.date)}</small></td><td>{r.location.name}</td><td className="num"><b>{r.closed ? '—' : r.total}</b>{r.closed && <small>Closed</small>}</td><td className="num">{r.closed ? '—' : r.regular}</td><td className="num">{r.closed ? '—' : r.subs}</td><td className="num">{r.closed || !r.location.sizes_enabled ? '—' : r.small}</td><td className="num">{r.closed || !r.location.sizes_enabled ? '—' : r.large}</td><td className="num">{r.closed ? '—' : r.pizza}</td><td>{r.replacementRows.length ? r.replacementRows.map((s) => <span className="sub-name" key={s.id}>{s.studentName} <b>{s.code}</b></span>) : <span className="muted">—</span>}</td></tr>)}</tbody>
       <tfoot><tr><th colSpan={2}>Week total</th><th>{total.meals}</th><th colSpan={2}>{total.subs} substitutions</th><th colSpan={2}></th><th>{total.pizza}</th><th></th></tr></tfoot></table></div>
-    <p className="report-note">Meal totals come from active students’ weekly schedules. Closed days are excluded. Substitutions are included in meal totals and shown separately.</p>
+    <p className="report-note">Meal totals combine roster schedules with any school-level headcount provided. Closed days are excluded. Substitutions are included in meal totals and shown separately.</p>
   </div>;
 }
 
@@ -243,7 +255,7 @@ function BillingPage({ current, daycares, students, menuDays, notes, month, setM
   const selected = current || daycares.find((d) => d.id === locId) || null;
   if (!selected) return <Empty title="Choose one daycare" text="Add a daycare to project its invoice." />;
   const closures = new Set(menuDays.filter((m) => m.daycare === selected.id && m.closed).map((m) => dateOnly(m.service_date)));
-  const projection = monthlyMealUnits(students.filter((s) => s.daycare === selected.id), month, closures);
+  const projection = monthlyMealUnits(students.filter((s) => s.daycare === selected.id), month, closures, selected.baseline_counts || {});
   const breakdown = projection.breakdown.map((day) => ({ ...day, perDay: day.serviceDates.map((date) => ({ date, count: day.studentsPerDay })) }));
   const mealUnits = projection.totalUnits;
   const monthNotes = notes.filter((n) => n.daycare === selected.id && n.month === month);
@@ -253,7 +265,7 @@ function BillingPage({ current, daycares, students, menuDays, notes, month, setM
   return <section><PageTitle title="Projected invoice" subtitle="Scheduled roster counts × the daycare's meal price, less closed service days, with documented meal-unit adjustments." />
     <div className="toolbar"><div className="button-row"><label className="month-picker">Invoice month<input type="month" value={month} onChange={(e) => setMonth(e.target.value)} /></label>{!current && <select value={locId} onChange={(e) => setLocId(e.target.value)}>{daycares.map((d) => <option value={d.id} key={d.id}>{d.name}</option>)}</select>}</div><div className="location-chip">{selected.name}</div></div>
     <div className="billing-summary"><div><span>Scheduled meal units</span><b>{mealUnits}</b></div><div><span>Price per meal</span><b>{money(price)}</b></div><div><span>Meal adjustments</span><b>{adjustmentUnits > 0 ? '+' : ''}{adjustmentUnits}</b></div><div className="invoice-total"><span>Projected subtotal</span><b>{money(projected)}</b><small>Before tax</small></div></div>
-    <div className="panel"><h2>Service-day breakdown</h2><div className="table-scroll"><table><thead><tr><th>Weekday</th><th>Service dates</th><th>Students each day</th><th>Meal units</th><th>Subtotal</th></tr></thead><tbody>{breakdown.map((d) => <tr key={d.weekday}><td><b>{d.weekday}</b></td><td>{d.perDay.map((x) => shortDate(x.date)).join(', ') || '—'}</td><td>{d.perDay.map((x) => x.count).join(', ') || '—'}</td><td>{d.units}</td><td>{money(d.units * price)}</td></tr>)}</tbody><tfoot><tr><th colSpan={3}>Projected schedule</th><th>{mealUnits}</th><th>{money(mealUnits * price)}</th></tr></tfoot></table></div></div>
+    <div className="panel"><h2>Service-day breakdown</h2><div className="table-scroll"><table><thead><tr><th>Weekday</th><th>Service dates</th><th>Meals each day</th><th>Meal units</th><th>Subtotal</th></tr></thead><tbody>{breakdown.map((d) => <tr key={d.weekday}><td><b>{d.weekday}</b></td><td>{d.perDay.map((x) => shortDate(x.date)).join(', ') || '—'}</td><td>{d.perDay.map((x) => x.count).join(', ') || '—'}</td><td>{d.units}</td><td>{money(d.units * price)}</td></tr>)}</tbody><tfoot><tr><th colSpan={3}>Projected schedule</th><th>{mealUnits}</th><th>{money(mealUnits * price)}</th></tr></tfoot></table></div></div>
     <div className="panel billing-notes"><h2>Notes & adjustments</h2><form className="note-form" onSubmit={addNote}><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a billing note" required /><label className="adjustment-input">Meal units {isClc && <input type="number" value={units} onChange={(e) => setUnits(Number(e.target.value))} />}{!isClc && <span>0</span>}</label><button className="primary">Save note</button></form><div className="simple-list">{monthNotes.map((n) => <div className="list-row" key={n.id}><span>{n.note}</span><span className={Number(n.adjustment_units) ? 'adjustment' : 'muted'}>{Number(n.adjustment_units) ? `${Number(n.adjustment_units) > 0 ? '+' : ''}${n.adjustment_units} meal units` : 'Note'}</span></div>)}{!monthNotes.length && <p className="muted">No notes for this month.</p>}</div></div>
     <p className="report-note">This is a projection based on scheduled service days. Student absences do not change the total. Tax is not included.</p>
   </section>;
@@ -263,7 +275,8 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
   const [selected, setSelected] = useState(daycares[0]?.id || ''); useEffect(() => { if (!daycares.some((d) => d.id === selected)) setSelected(daycares[0]?.id || ''); }, [daycares]);
   const daycare = daycares.find((d) => d.id === selected);
   return <section><PageTitle title="Daycare locations" subtitle="CLC-wide settings and account setup for each daycare." /><div className="toolbar"><select value={selected} onChange={(e) => setSelected(e.target.value)}>{daycares.map((d) => <option value={d.id} key={d.id}>{d.name}</option>)}</select><button className="primary" onClick={onCreate}>Add daycare</button></div>
-    {daycare && <div className="panel settings-panel"><div className="section-heading"><div><h2>{daycare.name}</h2><span className="muted">Public menu slug: {daycare.public_slug}</span></div><button className="outline" onClick={() => onAddAdmin(daycare)}>Create daycare admin</button></div>
+    {daycare && <div className="panel settings-panel"><div className="section-heading"><div><h2>{daycare.name}</h2><span className="muted">Public menu slug: {daycare.public_slug}</span></div><button className="outline" disabled={!daycare.operations_enabled} title={!daycare.operations_enabled ? 'Enable daycare operations first' : ''} onClick={() => onAddAdmin(daycare)}>Create daycare admin</button></div>
+      <label className="checkline"><input type="checkbox" checked={Boolean(daycare.operations_enabled)} onChange={(e) => void onSave({ operations_enabled: e.target.checked })} /> Allow daycare staff to use roster, weekly counts, and billing</label>
       <label>Meal price<input key={`price-${daycare.id}`} type="number" min="0" step="0.01" defaultValue={daycare.meal_price} onBlur={(e) => { if (Number(e.target.value) !== Number(daycare.meal_price)) void onSave({ meal_price: Number(e.target.value) }); }} /></label>
       <label className="checkline"><input type="checkbox" checked={daycare.allow_substitutions} onChange={(e) => void onSave({ allow_substitutions: e.target.checked })} /> Allow substitutions for this daycare</label>
       <label className="checkline"><input type="checkbox" checked={daycare.sizes_enabled} onChange={(e) => void onSave({ sizes_enabled: e.target.checked })} /> Track Small and Large meal counts</label>
