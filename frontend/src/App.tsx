@@ -276,7 +276,7 @@ function CountSettings({ school, onRefresh, error }: { school: Daycare; onRefres
 }
 
 function SubstitutionNames({ rows, students }: { rows: Row[]; students: Student[] }) {
-  return <>{rows.map((r, i) => <span className="summary-substitution" key={r.id}>{i > 0 && ' - '}{shortStudentName(students.find((student) => student.id === r.student)?.name || 'Student')}: <strong className="substitution-code">{r.code}</strong></span>)}</>;
+  return <>{rows.map((r, i) => <span className="summary-substitution" key={r.id}>{i > 0 && '  -  '}{shortStudentName(students.find((student) => student.id === r.student)?.name || 'Student')}: <strong className="substitution-code">{r.code}</strong></span>)}</>;
 }
 
 function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; students: Student[]; subs: Row[] }) {
@@ -285,7 +285,7 @@ function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; st
     const replacements = subs.filter((sub) => sub.daycare === school.id && sub.recurring && sub.weekday === day && roster.some((s) => s.id === sub.student));
     const managed = school.count_mode === 'manual' ? Number(school.clc_managed_counts?.[day] || 0) : 0;
     const total = school.count_mode === 'manual' ? Number(school.baseline_counts?.[day] || 0) + managed : roster.length;
-    return { day, roster, replacements, total, managed, pizza: day === 'Friday' ? Math.ceil(total / 3) : 0 };
+    return { day, roster, replacements, total, managed, pizza: day === 'Friday' ? Math.ceil(Math.max(0, total - replacements.length) / 3) : 0 };
   }) }));
   return <div className="weekly-summary"><h2>Cliffs Lunch Club — Weekly Kitchen Summary</h2>
     <table className="summary-overview"><thead><tr>{weekdays.map((day) => <th key={day}>{day}</th>)}</tr></thead><tbody><tr>{weekdays.map((day, i) => <td key={day}><strong>{day === 'Friday' ? `${data.reduce((n, s) => n + s.days[i].pizza, 0)} Pizzas` : data.reduce((n, s) => n + s.days[i].total, 0)}</strong></td>)}</tr>{data.map(({ school, days }) => <tr key={school.id}>{days.map((d) => <td key={d.day}><b>{school.name.replace('Lightbridge ', '').replace('Englewood Cliffs', 'EC')}</b>{d.day !== 'Friday' && school.sizes_enabled && school.count_mode === 'roster' && <div>{d.total}</div>}<div>{d.day === 'Friday' ? `${d.pizza} Pizzas` : school.sizes_enabled && school.count_mode === 'roster' ? `${d.roster.filter((s) => s.size === 'large' && !d.replacements.some((r) => r.student === s.id)).length} Large + ${d.roster.filter((s) => s.size === 'small' && !d.replacements.some((r) => r.student === s.id)).length} Small + ${d.replacements.length} Subs` : <>{d.managed ? `${d.total - d.managed} + ${d.managed} allergies` : `${d.total - d.replacements.length}`}{d.replacements.length > 0 && ` + ${d.replacements.length} subs`}</>}</div></td>)}</tr>)}</tbody></table>
@@ -294,8 +294,8 @@ function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; st
       return sizes.map((size, index) => { const kids = size === 'all' ? d.roster : d.roster.filter((s) => s.size === size); const replacements = size === 'all' ? d.replacements.filter((r) => d.day !== 'Friday' || !r.pizza_substitution) : d.replacements.filter((r) => kids.some((s) => s.id === r.student)); const total = size === 'all' ? d.total : kids.length;
         return <tr key={`${d.day}:${size}`}><th>{d.day.slice(0, 3)}{size !== 'all' ? ` ${titleCase(size)}` : ''}</th>{index === 0 && <td rowSpan={sizes.length}>{d.total}</td>}<td>{total - (d.day === 'Friday' ? d.replacements.length : replacements.length)}</td><td>{replacements.length}</td><td>{replacements.length ? <SubstitutionNames rows={replacements} students={students} /> : d.managed ? `${d.managed} allergies` : '—'}</td></tr>;
       });
-    })}<tr><th>Friday pizza</th><td>{days[4].pizza}</td><td>{days[4].pizza - days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.some((r) => r.pizza_substitution) ? <SubstitutionNames rows={days[4].replacements.filter((r) => r.pizza_substitution)} students={students} /> : '—'}</td></tr></tbody></table>{school.allow_substitutions && <div className="summary-legend">{['A','B','C','V'].map((code) => <div key={code}><b>{code}</b> — {school[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</div>)}</div>}</div>)}</div>
-    <p className="summary-footnote">Substitutions and Allergies are included in lunch totals. Friday pizza = lunches ÷ 3, rounded up. Recurring weekday counts; see monthly calendar for menus and closures.</p>
+    })}<tr><th>Friday pizza</th><td>{days[4].pizza}</td><td>{days[4].pizza}</td><td>{days[4].replacements.filter((r) => r.pizza_substitution).length}</td><td>{days[4].replacements.some((r) => r.pizza_substitution) ? <SubstitutionNames rows={days[4].replacements.filter((r) => r.pizza_substitution)} students={students} /> : '—'}</td></tr></tbody></table>{school.allow_substitutions && <div className="summary-legend">{['A','B','C','V'].map((code) => <div key={code}><b>{code}</b> — {school[`sub_${code.toLowerCase()}_label`] || `Option ${code}`}</div>)}</div>}</div>)}</div>
+    <p className="summary-footnote">Substitutions and Allergies are included in lunch totals. Friday pizza = lunches excluding substitutions ÷ 3, rounded up. Recurring weekday counts; see monthly calendar for menus and closures.</p>
   </div>;
 }
 
