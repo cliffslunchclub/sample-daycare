@@ -14,7 +14,7 @@ routerAdd('POST', '/api/billing', (e) => {
       const requests=()=>tx.findRecordsByFilter('lunch_requests','daycare = {:school}','',0,0,{school:schoolId})
       const checkInvoice=id=>{const r=tx.findRecordById('invoices',String(id||''));if(r.getString('daycare')!==schoolId)throw new Error('Invoice belongs to another school.');return r}
       const putTotals=(record,lines)=>{const sum=lib.totals(lines);for(const key of Object.keys(sum))record.set(key,sum[key])}
-      const requestLine=r=>{const day=lib.daily(plain(school),history(),menus(),r.getString('service_date'));const included=!day.closed && !day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase());return {description:`One-off lunch: ${r.getString('student_label')} (${r.getString('service_date')})`,quantity:included?1:0,rate:day.rate,taxable:true,request_id:r.id}}
+      const requestLine=r=>{const day=lib.daily(plain(school),history(),menus(),r.getString('service_date'));const included=!day.closed && !day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase());return {description:`One-off lunch: ${r.getString('student_label')} (${lib.displayDate(r.getString('service_date'))})`,quantity:included?1:0,rate:day.rate,taxable:true,request_id:r.id}}
       if(action==='request') {
         const kind=body.kind==='lunch'?'lunch':'note', studentId=String(body.student||'')
         const dates=kind==='lunch' ? lib.requestDates(body.service_dates,body.service_date) : ['']
@@ -47,7 +47,7 @@ routerAdd('POST', '/api/billing', (e) => {
             const date=r.getString('service_date'), counts=lib.daily(plain(school),history(),menus(),date)
             if(counts.closed || counts.roster.some(s=>s.id===r.getString('student')||String(s.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase()))throw new Error('No service or student already scheduled. Review this request.')
             const drafts=tx.findRecordsByFilter('invoices','daycare = {:school} && month = {:month} && status = "draft"','',0,0,{school:schoolId,month:date.slice(0,7)})
-            if(drafts.length===1){const invoice=drafts[0];putTotals(invoice,[...(JSON.parse(invoice.getString('lines')||'[]')||[]),requestLine(r)]);tx.save(invoice);r.set('invoice_id',invoice.id)}
+            if(drafts.length===1){const invoice=drafts[0];putTotals(invoice,[...(JSON.parse(invoice.getString('lines')||'[]')||[]),requestLine(r)]);invoice.set('generated_notes',invoice.getString('generated_notes')+'\n'+requestLine(r).description+': +1 meal.');tx.save(invoice);r.set('invoice_id',invoice.id)}
           }
         }else if(!['acknowledged','resolved'].includes(status))throw new Error('Choose Acknowledged or Resolved.')
         r.set('status',status);r.set('response',String(body.response||''));tx.save(r);result=plain(r)
@@ -68,20 +68,25 @@ routerAdd('POST', '/api/billing', (e) => {
         if(existing.length)throw new Error('A draft already exists for this month. Edit it instead.')
         const h=history(),m=menus(),counts=[],groups={}
         const alreadyIssued=tx.findRecordsByFilter('invoices','daycare = {:school} && month = {:month} && status = "issued"','',1,0,{school:schoolId,month}).length>0
-        const date=new Date(month+'-01T12:00:00Z')
-        while(date.toISOString().startsWith(month)){
-          const d=lib.daily(plain(school),h,m,date.toISOString().slice(0,10));counts.push({date:d.date,quantity:d.quantity,rate:d.rate,closed:d.closed});if(d.quantity && !alreadyIssued)groups[d.rate]=(groups[d.rate]||0)+d.quantity;date.setUTCDate(date.getUTCDate()+1)
-        }
-        const lines=Object.keys(groups).map(rate=>({description:month+' Lunch Catering',quantity:groups[rate],rate:Number(rate),taxable:true}))
+        const plan=lib.monthlyPlan(plain(school),h,m,month);counts.push(...plan.counts)
+        const lines=alreadyIssued?[]:plan.lines
         const extras=requests().filter(r=>{if(r.getString('kind')!=='lunch'||r.getString('status')!=='approved'||r.getString('invoice_id')||r.getString('service_date')>counts[counts.length-1].date)return false;const day=lib.daily(plain(school),h,m,r.getString('service_date'));return !day.closed && !day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase())})
         for(const r of extras)lines.push(requestLine(r))
-        if(!lines.length)lines.push({description:month+(alreadyIssued?' Additional Adjustment':' Lunch Catering'),quantity:0,rate:school.getFloat('invoice_rate'),taxable:true})
+        if(!lines.length)lines.push({description:lib.monthLabel(month)+(alreadyIssued?' Additional Adjustment':' Lunch Catering'),quantity:0,rate:school.getFloat('invoice_rate'),taxable:true})
         const slug=school.getString('public_slug'),prefix=slug==='lightbridge-bergenfield'?'BF':slug==='lightbridge-fort-lee'?'FL':slug==='tle-englewood-cliffs'?'TLE':'INV'
         const base=prefix+month.slice(5)+month.slice(2,4), same=tx.findRecordsByFilter('invoices','number ~ {:prefix}','',0,0,{prefix:base})
         let number=base,n=2;while(same.some(row=>row.getString('number')===number))number=base+'.'+n++
         const invoice=new Record(tx.findCollectionByNameOrId('invoices'))
-        for(const [k,v] of Object.entries({daycare:schoolId,school_name:school.getString('name'),month,invoice_date:String(body.invoice_date||lib.nyDate()),number,status:'draft',daily_counts:alreadyIssued?[]:counts,notes:alreadyIssued?'Adjustment invoice. Monthly scheduled lunches were already invoiced. Due upon receipt.':'Due upon receipt.'}))invoice.set(k,v)
-        putTotals(invoice,lines);tx.save(invoice);for(const r of extras){r.set('invoice_id',invoice.id);tx.save(r)}result=plain(invoice)
+        for(const [k,v] of Object.entries({daycare:schoolId,school_name:school.getString('name'),month,invoice_date:String(body.invoice_date||lib.nyDate()),number,status:'draft',daily_counts:alreadyIssued?[]:counts,notes:'Due upon receipt.',generated_notes:alreadyIssued?'Adjustment invoice. Monthly scheduled lunches were already invoiced.':plan.notes}))invoice.set(k,v)
+        putTotals(invoice,lines);invoice.set('generated_notes',String(invoice.getString('generated_notes')||'')+(extras.length?'\n'+extras.map(r=>{const line=requestLine(r);return line.description+': +'+line.quantity+' meals.'}).join('\n'):''));tx.save(invoice);for(const r of extras){r.set('invoice_id',invoice.id);tx.save(r)}result=plain(invoice)
+      } else if(action==='recalculate') {
+        if(!clc)throw new Error('CLC access is required.');const invoice=checkInvoice(body.id);if(invoice.getString('status')!=='draft')throw new Error('Only drafts can be recalculated.');
+        const month=invoice.getString('month'),plan=lib.monthlyPlan(plain(school),history(),menus(),month);
+        const issued=tx.findRecordsByFilter('invoices','daycare = {:school} && month = {:month} && status = "issued"','',1,0,{school:schoolId,month}).length>0;
+        const saved=JSON.parse(invoice.getString('lines')||'[]'),manual=saved.filter(line=>!line.request_id && line.adjustment_type!=='schedule' && !line.baseline && !line.description.startsWith(month+' Lunch Catering') && line.description!==month+' Additional Adjustment' && line.description!==lib.monthLabel(month)+' Additional Adjustment');
+        const auto=requests().filter(r=>r.getString('invoice_id')===invoice.id).map(requestLine),lines=[...(issued?[]:plan.lines),...manual,...auto];
+        if(!lines.length)lines.push({description:month+' Additional Adjustment',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true});
+        putTotals(invoice,lines);invoice.set('daily_counts',issued?[]:plan.counts);invoice.set('generated_notes',(issued?'Adjustment invoice. Monthly scheduled lunches were already invoiced.':plan.notes)+(auto.length?'\n'+auto.map(line=>line.description+': +'+line.quantity+' meals.').join('\n'):''));tx.save(invoice);result=plain(invoice);
       } else if(action==='save'||action==='issue'||action==='delete') {
         if(!clc)throw new Error('CLC access is required.')
         const invoice=checkInvoice(body.id)
@@ -95,7 +100,10 @@ routerAdd('POST', '/api/billing', (e) => {
           const linked=requests().filter(r=>r.getString('invoice_id')===invoice.id)
           if(!Array.isArray(body.lines))throw new Error('Invoice lines are required.')
           const manual=body.lines.filter(line=>!line.request_id)
-          const auto=linked.map(r=>requestLine(r));putTotals(invoice,[...manual,...auto])
+          const auto=linked.map(r=>requestLine(r));putTotals(invoice,[...manual,...auto]);
+          const notes=invoice.getString('generated_notes').split('\n').filter(line=>!line.startsWith('Midmonth additions:')&&!line.startsWith('Midmonth removals:')&&!line.startsWith('One-off lunch:'));
+          for(const line of [...manual,...auto].filter(l=>l.request_id||l.adjustment_type==='schedule'))notes.push(line.description+': '+(line.quantity>0?'+':'')+line.quantity+' meals.');
+          invoice.set('generated_notes',notes.filter(Boolean).join('\n'))
           invoice.set('number',String(body.number).trim());invoice.set('invoice_date',String(body.invoice_date));invoice.set('notes',String(body.notes||''));if(action==='issue')invoice.set('status','issued');tx.save(invoice);result=plain(invoice)
         }
       } else if(action==='flag') {

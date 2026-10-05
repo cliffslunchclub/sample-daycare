@@ -1,0 +1,1 @@
+migrate(app=>{const c=app.findCollectionByNameOrId('invoices');c.fields.add(new TextField({name:'generated_notes',max:30000}));app.save(c)},app=>{const c=app.findCollectionByNameOrId('invoices');c.fields.removeByName('generated_notes');app.save(c)})
