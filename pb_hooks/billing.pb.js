@@ -131,7 +131,7 @@ routerAdd('POST', '/api/billing', (e) => {
 onRecordCreate((e)=>{e.app.runInTransaction(tx=>{e.app=tx;e.next();require(__hooks+'/schedule-lib.js').capture(tx,e.record,false)})},'students','daycares')
 onRecordUpdate((e)=>{
   const school=e.record.collection().name==='daycares'
-  const keys=school?['count_mode','baseline_counts','clc_managed_counts','invoice_rate','billing_effective_date']:['active','service_days','size','billing_effective_date']
+  const keys=school?['count_mode','baseline_counts','clc_managed_counts','invoice_rate','billing_effective_date']:['active','service_days','size','classroom','billing_effective_date']
   const previous=e.record.original()
   if(keys.every(key=>e.record.getString(key)===previous.getString(key)))return e.next()
   e.app.runInTransaction(tx=>{e.app=tx;e.next();require(__hooks+'/schedule-lib.js').capture(tx,e.record,false)})

@@ -338,14 +338,14 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
   }
   const sortedStudents = [...students].sort((a, b) => { const av = studentSortValue(a), bv = studentSortValue(b); return (typeof av === 'number' && typeof bv === 'number' ? av - bv : String(av).localeCompare(String(bv))) * sortDirection || a.name.localeCompare(b.name); });
   const [roomName, setRoomName] = useState(''); const [editing, setEditing] = useState<Student | null>(null);
-  const [name, setName] = useState(''); const [room, setRoom] = useState(''); const [size, setSize] = useState(current?.sizes_enabled ? 'small' : 'standard'); const [days, setDays] = useState<string[]>([]); const [active, setActive] = useState(true);
+  const [name, setName] = useState(''); const [room, setRoom] = useState(''); const [days, setDays] = useState<string[]>([]); const [active, setActive] = useState(true);
   const visibleStudents = sortedStudents.filter((student) => student.daycare === current?.id && (!classroomFilter || student.classroom === classroomFilter));
   const chosenStudents = visibleStudents.filter((student) => selectedIds.includes(student.id));
   if (!current) return <Empty title="Choose one daycare" text="Select a single daycare in the top bar to manage its roster." />;
   async function saveRoom(e: FormEvent) { e.preventDefault(); try { await pb.collection('classrooms').create({ name: roomName.trim(), daycare: current!.id, active: true, meal_size: current!.sizes_enabled ? 'small' : 'standard', age_order: Math.max(0, ...classrooms.map((c) => Number(c.age_order || 0))) + 1 }); setRoomName(''); await onRefresh(); } catch (e) { error(message(e)); } }
-  function edit(s: Student) { setEditing(s); setName(s.name); setRoom(s.classroom); setSize(current?.sizes_enabled ? (s.size === 'large' ? 'large' : 'small') : 'standard'); setDays(s.service_days || []); setActive(s.active); }
-  function reset() { setEditing(null); setName(''); setRoom(orderedRooms[0]?.id || ''); setSize(current?.sizes_enabled ? 'small' : 'standard'); setDays([]); setActive(true); }
-  async function saveStudent(e: FormEvent) { e.preventDefault(); try { const data = { name: name.trim(), classroom: room, daycare: current!.id, size: current!.sizes_enabled ? (size === 'large' ? 'large' : 'small') : 'standard', service_days: days, active, billing_effective_date: effective }; if (editing) await pb.collection('students').update(editing.id, data); else await pb.collection('students').create(data); reset(); await onRefresh(); } catch (e) { error(message(e)); } }
+  function edit(s: Student) { setEditing(s); setName(s.name); setRoom(s.classroom); setDays(s.service_days || []); setActive(s.active); }
+  function reset() { setEditing(null); setName(''); setRoom(orderedRooms[0]?.id || ''); setDays([]); setActive(true); }
+  async function saveStudent(e: FormEvent) { e.preventDefault(); try { const data = { name: name.trim(), classroom: room, daycare: current!.id, size: current!.sizes_enabled ? classrooms.find(c=>c.id===room)?.meal_size : 'standard', service_days: days, active, billing_effective_date: effective }; if (editing) await pb.collection('students').update(editing.id, data); else await pb.collection('students').create(data); reset(); await onRefresh(); } catch (e) { error(message(e)); } }
   async function moveStudents() {
     const target = classrooms.find((classroom) => classroom.id === destination && classroom.daycare === current!.id && classroom.active);
     const moves = chosenStudents.filter((student) => student.classroom !== destination);
@@ -369,7 +369,7 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
       </div>
       <StudentEditor editing={Boolean(editing)} onClose={reset}><h2 id="student-editor-title">{editing ? 'Edit student' : 'Add a student'}</h2><form onSubmit={saveStudent} className="stack-form">
         <label>Student name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Classroom<select value={room} onChange={(e) => setRoom(e.target.value)} required><option value="">Choose classroom</option>{orderedRooms.filter((c) => c.daycare === current!.id && c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label>
-        {current.sizes_enabled && <label>Meal size<select value={size === 'large' ? 'large' : 'small'} onChange={(e) => setSize(e.target.value)}><option value="small">Small</option><option value="large">Large</option></select></label>}
+        {current.sizes_enabled && <p>Meal Size: <b>{room ? titleCase(classrooms.find(c=>c.id===room)?.meal_size||'small') : 'Choose a Classroom'}</b> · Set by Classroom</p>}
         <label>Schedule Effective Date<input type="date" required value={effective} onChange={e => setEffective(e.target.value)} /></label><fieldset><legend>Recurring service days</legend><div className="day-picks">{weekdays.map((d) => <label key={d}><input type="checkbox" checked={days.includes(d)} onChange={(e) => setDays(e.target.checked ? [...days, d] : days.filter((x) => x !== d))} />{d.slice(0, 3)}</label>)}</div></fieldset>
         <label className="checkline"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active for counts</label><div className="form-actions"><button className="primary">{editing ? 'Save changes' : 'Add student'}</button>{editing && <button type="button" className="outline" onClick={reset}>Cancel</button>}</div>
       </form></StudentEditor>

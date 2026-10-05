@@ -102,7 +102,7 @@ routerAdd("POST", "/api/move-students", (e) => {
       if (classroom.getString("daycare") !== schoolId || !classroom.getBool("active")) throw new Error("Choose an active classroom in this school.")
       const students = ids.map((id) => tx.findRecordById("students", id))
       for (const student of students) if (student.getString("daycare") !== schoolId) throw new Error("Every selected student must belong to this school.")
-      for (const student of students) { student.set("classroom", classroomId); tx.save(student) }
+      for (const student of students) { student.set("classroom", classroomId); student.set("billing_effective_date", require(__hooks+"/billing-lib.js").nyDate()); tx.save(student) }
     })
     return e.json(200, { moved: ids.length })
   } catch (_) { return e.json(400, { message: "No students were moved. Check that all students and the destination classroom belong to this school and roster access is enabled." }) }
