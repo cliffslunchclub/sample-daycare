@@ -19,6 +19,8 @@ routerAdd('POST', '/api/billing', (e) => {
         const kind=body.kind==='lunch'?'lunch':'note', studentId=String(body.student||'')
         const dates=kind==='lunch' ? lib.requestDates(body.service_dates,body.service_date) : ['']
         const created=[]
+        let classroomLabel='',mealSize='standard'
+        if(kind==='lunch'){if(!body.classroom&&!school.getBool('sizes_enabled'))classroomLabel='School Total';else{const room=tx.findRecordById('classrooms',String(body.classroom||''));if(room.getString('daycare')!==schoolId||!room.getBool('active'))throw new Error('Choose an active classroom in this school.');classroomLabel=room.getString('name');mealSize=school.getBool('sizes_enabled')?room.getString('meal_size'):'standard';if(!['small','large','standard'].includes(mealSize))throw new Error('Configure the classroom meal size first.')}}
         const h=history(),m=menus(),existingRequests=requests()
         if(!String(body.note||'').trim() || String(body.note).length>4000)throw new Error('Enter a note of up to 4000 characters.')
         let label=String(body.student_label||'').trim()
@@ -29,13 +31,20 @@ routerAdd('POST', '/api/billing', (e) => {
           const counts=lib.daily(plain(school),h,m,date)
           if(counts.closed)throw new Error(date+': This is a no-service day. No dates were submitted.')
           if(counts.roster.some(r=>(studentId && r.id===studentId)||String(r.name||'').trim().toLowerCase()===label.toLowerCase()))throw new Error(date+': This student already receives a scheduled lunch. No dates were submitted.')
-          if(existingRequests.some(r=>r.getString('kind')==='lunch'&&r.getString('service_date')===date&&r.getString('status')!=='rejected'&&((studentId && r.getString('student')===studentId)||r.getString('student_label').trim().toLowerCase()===label.toLowerCase())))throw new Error(date+': A lunch request already exists for this student. No dates were submitted.')
+          if(existingRequests.some(r=>r.getString('kind')==='lunch'&&r.getString('service_date')===date&&['pending','approved'].includes(r.getString('status'))&&((studentId && r.getString('student')===studentId)||r.getString('student_label').trim().toLowerCase()===label.toLowerCase())))throw new Error(date+': A lunch request already exists for this student. No dates were submitted.')
         }
         const r=new Record(tx.findCollectionByNameOrId('lunch_requests'))
-        for(const [key,value] of Object.entries({daycare:schoolId,kind,student:studentId,student_label:label,classroom_label:String(body.classroom_label||''),service_date:date,size:['small','large'].includes(body.size)?body.size:'standard',code:['A','B','C','V'].includes(body.code)?body.code:'',note:String(body.note),status:kind==='lunch'?'pending':'new',created_by:e.auth.getString('display_name')||e.auth.getString('email')}))r.set(key,value)
+        for(const [key,value] of Object.entries({daycare:schoolId,kind,student:studentId,student_label:label,classroom_label:classroomLabel,service_date:date,size:mealSize,code:['A','B','C','V'].includes(body.code)?body.code:'',note:String(body.note),status:kind==='lunch'?'pending':'new',created_by:e.auth.getString('display_name')||e.auth.getString('email')}))r.set(key,value)
         tx.save(r);created.push(plain(r))
         }
         result=Array.isArray(body.service_dates)?{created:created.length,requests:created}:created[0]
+      } else if(action==='delete-request') {
+        if(!clc)throw new Error('Only CLC admins can delete one-off requests.');
+        const r=tx.findRecordById('lunch_requests',String(body.id||''));if(r.getString('daycare')!==schoolId||r.getString('kind')!=='lunch')throw new Error('Choose a one-off request in this school.');
+        let issued=false;
+        if(r.getString('invoice_id')){const invoice=checkInvoice(r.getString('invoice_id'));issued=invoice.getString('status')==='issued';if(!issued){const lines=JSON.parse(invoice.getString('lines')||'[]').filter(line=>line.request_id!==r.id);if(!lines.length)lines.push({description:'Adjustment',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true});putTotals(invoice,lines);const description=requestLine(r).description;invoice.set('generated_notes',invoice.getString('generated_notes').split('\n').filter(line=>!line.startsWith(description+':')).join('\n'));tx.save(invoice);r.set('invoice_id','');}}
+        // Keep an audit record, particularly when an issued invoice references it.
+        r.set('status','deleted');tx.save(r);result={message:issued?'One-off request deleted. Its issued invoice is unchanged; add a credit adjustment if needed.':'One-off request deleted. Kitchen counts and any draft invoice were updated.'};
       } else if(action==='request-status') {
         if(!clc)throw new Error('CLC approval is required.')
         const r=tx.findRecordById('lunch_requests',String(body.id||''))
