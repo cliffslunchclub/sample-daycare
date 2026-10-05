@@ -16,20 +16,26 @@ routerAdd('POST', '/api/billing', (e) => {
       const putTotals=(record,lines)=>{const sum=lib.totals(lines);for(const key of Object.keys(sum))record.set(key,sum[key])}
       const requestLine=r=>{const day=lib.daily(plain(school),history(),menus(),r.getString('service_date'));const included=!day.closed && !day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase());return {description:`One-off lunch: ${r.getString('student_label')} (${r.getString('service_date')})`,quantity:included?1:0,rate:day.rate,taxable:true,request_id:r.id}}
       if(action==='request') {
-        const kind=body.kind==='lunch'?'lunch':'note', date=String(body.service_date||''), studentId=String(body.student||'')
+        const kind=body.kind==='lunch'?'lunch':'note', studentId=String(body.student||'')
+        const dates=kind==='lunch' ? lib.requestDates(body.service_dates,body.service_date) : ['']
+        const created=[]
+        const h=history(),m=menus(),existingRequests=requests()
         if(!String(body.note||'').trim() || String(body.note).length>4000)throw new Error('Enter a note of up to 4000 characters.')
         let label=String(body.student_label||'').trim()
         if(studentId){const student=tx.findRecordById('students',studentId);if(student.getString('daycare')!==schoolId)throw new Error('Student belongs to another school.');label=student.getString('name')}
+        for(const date of dates) {
         if(kind==='lunch') {
           if(!lib.validDate(date)||!label)throw new Error('Choose a student or trial name and valid date.')
-          const counts=lib.daily(plain(school),history(),menus(),date)
-          if(counts.closed)throw new Error('This is a no-service day.')
-          if(counts.roster.some(r=>(studentId && r.id===studentId)||String(r.name||'').trim().toLowerCase()===label.toLowerCase()))throw new Error('This student already receives a scheduled lunch on this date.')
-          if(requests().some(r=>r.getString('kind')==='lunch'&&r.getString('service_date')===date&&r.getString('status')!=='rejected'&&((studentId && r.getString('student')===studentId)||r.getString('student_label').trim().toLowerCase()===label.toLowerCase())))throw new Error('A lunch request already exists for this student and date.')
+          const counts=lib.daily(plain(school),h,m,date)
+          if(counts.closed)throw new Error(date+': This is a no-service day. No dates were submitted.')
+          if(counts.roster.some(r=>(studentId && r.id===studentId)||String(r.name||'').trim().toLowerCase()===label.toLowerCase()))throw new Error(date+': This student already receives a scheduled lunch. No dates were submitted.')
+          if(existingRequests.some(r=>r.getString('kind')==='lunch'&&r.getString('service_date')===date&&r.getString('status')!=='rejected'&&((studentId && r.getString('student')===studentId)||r.getString('student_label').trim().toLowerCase()===label.toLowerCase())))throw new Error(date+': A lunch request already exists for this student. No dates were submitted.')
         }
         const r=new Record(tx.findCollectionByNameOrId('lunch_requests'))
         for(const [key,value] of Object.entries({daycare:schoolId,kind,student:studentId,student_label:label,classroom_label:String(body.classroom_label||''),service_date:date,size:['small','large'].includes(body.size)?body.size:'standard',code:['A','B','C','V'].includes(body.code)?body.code:'',note:String(body.note),status:kind==='lunch'?'pending':'new',created_by:e.auth.getString('display_name')||e.auth.getString('email')}))r.set(key,value)
-        tx.save(r);result=plain(r)
+        tx.save(r);created.push(plain(r))
+        }
+        result=Array.isArray(body.service_dates)?{created:created.length,requests:created}:created[0]
       } else if(action==='request-status') {
         if(!clc)throw new Error('CLC approval is required.')
         const r=tx.findRecordById('lunch_requests',String(body.id||''))

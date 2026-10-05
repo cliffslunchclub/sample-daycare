@@ -31,4 +31,10 @@ function nyDate(now=new Date()) {
   const offset=now.getTime()>=spring && now.getTime()<fall ? 4 : 5;
   return new Date(now.getTime()-offset*3600000).toISOString().slice(0,10);
 }
-module.exports={validDate,latest,daily,totals,weekdays,nyDate}
+function requestDates(values, single) {
+  if(values!==undefined && !Array.isArray(values))throw new Error('Lunch dates must be a list.')
+  const dates=[...new Set((values===undefined?[single]:values).map(value=>String(value||'')))].sort();
+  if(!dates.length || dates.length>31 || dates.some(date=>!validDate(date)))throw new Error('Choose between 1 and 31 valid lunch dates.')
+  return dates;
+}
+module.exports={validDate,latest,daily,totals,weekdays,nyDate,requestDates}

@@ -45,3 +45,11 @@
 .invoice-page td { vertical-align: top; }
 .dated-kitchen-counts { margin-top: 24px; color: #000; }
 @media print { .dated-kitchen-counts { display: none; } }
+
+.lunch-date-picker { max-width: 620px; margin: 20px 0; }
+.lunch-date-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.lunch-date-grid > b { text-align: center; font-size: 12px; }
+.lunch-date-grid > label { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 7px; min-height: 44px; padding: 6px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+.lunch-date-grid > label.picked { background: #e6efe4; border-color: #36543c; }
+.lunch-date-grid input { width: auto; margin: 0; }
+.lunch-date-grid label:has(input:disabled) { opacity: .45; }
