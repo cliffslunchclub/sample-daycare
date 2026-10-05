@@ -135,3 +135,6 @@
   .panel-stack > .button-row { gap:var(--space-2); }
   .landing-content h1 { white-space:normal; }
 }
+
+.month-field{display:flex;gap:var(--space-2);min-width:0;flex-wrap:wrap}
+.month-field select{min-width:0}
