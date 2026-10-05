@@ -7,7 +7,7 @@ function daily(school, history, menus, date) {
   const day = weekdays[new Date(date+'T12:00:00Z').getUTCDay()]
   const state = latest(history, 'school', date)
   if (!state) throw new Error('No count history for '+date+'. Set an effective date covering this period before generating an invoice.')
-  const closed = ['Saturday','Sunday'].includes(day) || (school.public_slug === 'tle-englewood-cliffs' && day === 'Friday') || menus.some(row=>row.service_date.slice(0,10)===date && row.closed)
+  const closed = ['Saturday','Sunday'].includes(day) || (school.public_slug === 'tle-englewood-cliffs' && day === 'Friday' && state.count_mode === 'manual' && !Number((state.baseline_counts||{}).Friday||0)) || menus.some(row=>row.service_date.slice(0,10)===date && row.closed)
   const roster = [...new Set(history.filter(row=>row.entity!=='school').map(row=>row.entity))].map(id=>({id,...latest(history,id,date)})).filter(row=>row.active && (row.service_days||[]).includes(day))
   const quantity = closed ? 0 : state.count_mode==='manual' ? Number((state.baseline_counts||{})[day]||0) : roster.length
   const allergies = closed ? 0 : state.count_mode==='manual' ? Number((state.clc_managed_counts||{})[day]||0) : 0
