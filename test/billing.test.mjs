@@ -25,3 +25,23 @@ test('monthly baseline and separate student additions/removals reconcile without
 test('manual weekday notes and signed midmonth count adjustments respect closures',()=>{
  const h=[{entity:'school',effective_date:'2026-10-01',snapshot:{count_mode:'manual',baseline_counts:{Monday:10,Tuesday:20},invoice_rate:4}},{entity:'school',effective_date:'2026-10-15',snapshot:{count_mode:'manual',baseline_counts:{Monday:12,Tuesday:18},invoice_rate:4}}];const plan=lib.monthlyPlan(school,h,[{service_date:'2026-10-05',closed:true}],'2026-10');assert.match(plan.notes,/Monday: 10 meals\/day x 3 days = 30 baseline meals/);assert.match(plan.notes,/Tuesday: 20 meals\/day x 4 days = 80 baseline meals/);assert.equal(plan.lines.reduce((n,l)=>n+l.quantity,0),plan.counts.reduce((n,d)=>n+d.quantity,0));assert.equal(lib.displayDate('2026-10-05'),'10-05-2026');
 });
+
+test('two-week Monday periods set first-Friday send date and second-Friday due date across months',()=>{
+ const p=lib.biweeklyPeriod('2026-10-26');assert.equal(p.period_end,'2026-11-06');assert.equal(p.invoice_date,'2026-10-30');assert.equal(p.due_date,'2026-11-06');assert.equal(p.next_start,'2026-11-09');
+ assert.throws(()=>lib.biweeklyPeriod('2026-10-27'),/Monday/);
+ const h=[{entity:'school',effective_date:'2026-10-01',snapshot:{count_mode:'manual',baseline_counts:{Monday:120,Tuesday:120,Wednesday:120,Thursday:120,Friday:0},invoice_rate:3.5}},{entity:'school',effective_date:'2026-11-02',snapshot:{count_mode:'manual',baseline_counts:{Monday:125,Tuesday:125,Wednesday:125,Thursday:125,Friday:0},invoice_rate:3.5}}];
+ const plan=lib.monthlyPlan({public_slug:'tle-englewood-cliffs'},h,[],'2026-10',p.period_start,p.period_end);
+ assert.equal(plan.counts.length,12);assert.equal(plan.counts.reduce((n,d)=>n+d.quantity,0),980);assert.equal(plan.lines.reduce((n,l)=>n+l.quantity,0),980);
+ assert.equal(plan.lines.find(l=>l.adjustment_type==='schedule').quantity,20);assert.match(plan.notes,/Total service days: 8/);
+});
+test('carry-forward corrections include date and source, reconcile credits and rates, and do not repeat',()=>{
+ const school={public_slug:'tle-englewood-cliffs'};
+ const h=[{entity:'school',effective_date:'2026-10-01',snapshot:{count_mode:'manual',baseline_counts:{Monday:120},invoice_rate:3.5}},{entity:'school',effective_date:'2026-10-19',snapshot:{count_mode:'manual',baseline_counts:{Monday:125},invoice_rate:3.5}}];
+ const original={id:'first',number:'TLE1012',billing_cycle:'biweekly',status:'issued',period_start:'2026-10-12',period_end:'2026-10-23',daily_counts:[{date:'2026-10-12',quantity:120,rate:3.5},{date:'2026-10-19',quantity:120,rate:3.5}],lines:[]};
+ let corrections=lib.carryForward(school,h,[],[original],'2026-10-26');assert.equal(corrections.length,1);assert.equal(corrections[0].quantity,5);assert.match(corrections[0].description,/10-19-2026.*120 to 125/);
+ const next={id:'second',billing_cycle:'biweekly',status:'issued',period_start:'2026-10-26',period_end:'2026-11-06',daily_counts:[],lines:corrections};
+ assert.equal(lib.carryForward(school,h,[],[original,next],'2026-11-09').length,0);
+ corrections=lib.carryForward(school,h,[{service_date:'2026-10-19',closed:true}],[original,next],'2026-11-09');assert.equal(corrections[0].quantity,-125);
+ const changed=[...h,{entity:'school',effective_date:'2026-10-19',snapshot:{count_mode:'manual',baseline_counts:{Monday:125},invoice_rate:4}}];
+ changed.splice(1,1);corrections=lib.carryForward(school,changed,[],[original,next],'2026-11-09');assert.equal(corrections.length,2);assert.equal(corrections.reduce((n,l)=>n+l.quantity*l.rate,0),62.5);
+});

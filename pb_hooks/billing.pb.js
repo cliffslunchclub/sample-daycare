@@ -15,7 +15,29 @@ routerAdd('POST', '/api/billing', (e) => {
       const checkInvoice=id=>{const r=tx.findRecordById('invoices',String(id||''));if(r.getString('daycare')!==schoolId)throw new Error('Invoice belongs to another school.');return r}
       const putTotals=(record,lines)=>{const sum=lib.totals(lines);for(const key of Object.keys(sum))record.set(key,sum[key])}
       const requestLine=r=>{const day=lib.daily(plain(school),history(),menus(),r.getString('service_date'));const included=!day.closed && !day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase());return {description:`One-off lunch: ${r.getString('student_label')} (${lib.displayDate(r.getString('service_date'))})`,quantity:included?1:0,rate:day.rate,taxable:true,request_id:r.id}}
-      if(action==='request') {
+      const allInvoices=()=>tx.findRecordsByFilter('invoices','daycare = {:school}','',0,0,{school:schoolId}).map(plain)
+      const isTle=school.getString('public_slug')==='tle-englewood-cliffs'
+      const nextPeriod=()=>{const periods=allInvoices().filter(i=>i.billing_cycle==='biweekly').sort((a,b)=>b.period_start.localeCompare(a.period_start));return periods.length?lib.addDays(periods[0].period_start,14):school.getString('billing_anchor')}
+      const biweeklyLines=(start,end)=>{const h=history(),m=menus(),plan=lib.monthlyPlan(plain(school),h,m,start.slice(0,7),start,end);const carry=lib.carryForward(plain(school),h,m,allInvoices(),start);return {...plan,lines:[...plan.lines,...carry],notes:'Service period: '+lib.displayDate(start)+' to '+lib.displayDate(end)+'.\n'+plan.notes+(carry.length?'\n'+carry.map(l=>l.description+': '+(l.quantity>0?'+':'')+l.quantity+' x $'+l.rate.toFixed(2)+'.').join('\n'):'')}}
+      if(action==='period-settings'){
+        if(!isTle)throw new Error('Two-week periods are configured for TLE only.');
+        const next=nextPeriod();result={anchor:school.getString('billing_anchor'),...(next?lib.biweeklyPeriod(next):{})}
+      } else if(action==='generate-biweekly'){
+        if(!clc||!isTle)throw new Error('CLC access and TLE school are required.');
+        if(allInvoices().some(i=>i.billing_cycle==='biweekly'&&i.status==='draft'))throw new Error('Review and issue the existing two-week draft before creating the next one.');
+        const expected=nextPeriod(),start=String(body.period_start||expected||''),period=lib.biweeklyPeriod(start);
+        if(expected&&start!==expected)throw new Error('The next period starts '+lib.displayDate(expected)+'.');
+        const overlap=allInvoices().some(i=>{const from=i.period_start||i.month+'-01',to=i.period_end||lib.addDays(i.month+'-01',new Date(Number(i.month.slice(0,4)),Number(i.month.slice(5)),0).getDate()-1);return from<=period.period_end&&to>=start});
+        if(overlap)throw new Error('This period overlaps an existing invoice. Review or delete the draft first.');
+        const plan=biweeklyLines(start,period.period_end),invoice=new Record(tx.findCollectionByNameOrId('invoices'));
+        const invoiceDate=String(body.invoice_date||period.invoice_date);if(!lib.validDate(invoiceDate))throw new Error('Choose a valid invoice date.');
+        const number='TLE'+start.replace(/-/g,'');if(tx.findRecordsByFilter('invoices','number = {:number}','',1,0,{number}).length)throw new Error('Invoice number already exists.');
+        for(const [k,v]of Object.entries({daycare:schoolId,school_name:school.getString('name'),month:start.slice(0,7),billing_cycle:'biweekly',period_start:start,period_end:period.period_end,due_date:period.due_date,invoice_date:invoiceDate,number,status:'draft',daily_counts:plan.counts,notes:'Payment due by '+lib.displayDate(period.due_date)+'.',generated_notes:plan.notes}))invoice.set(k,v);
+        const extras=requests().filter(r=>r.getString('kind')==='lunch'&&r.getString('status')==='approved'&&!r.getString('invoice_id')&&r.getString('service_date')<=period.period_end);
+        const lines=[...plan.lines,...extras.map(requestLine)];if(!lines.length)lines.push({description:'Lunch Catering',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true,baseline:true});
+        putTotals(invoice,lines);tx.save(invoice);for(const r of extras){r.set('invoice_id',invoice.id);tx.save(r)}
+        if(!school.getString('billing_anchor')){school.set('billing_anchor',start);tx.save(school)}result=plain(invoice);
+      } else if(action==='request') {
         const kind=body.kind==='lunch'?'lunch':'note', studentId=String(body.student||'')
         const dates=kind==='lunch' ? lib.requestDates(body.service_dates,body.service_date) : ['']
         const created=[]
@@ -55,7 +77,7 @@ routerAdd('POST', '/api/billing', (e) => {
           if(status==='approved'){
             const date=r.getString('service_date'), counts=lib.daily(plain(school),history(),menus(),date)
             if(counts.closed || counts.roster.some(s=>s.id===r.getString('student')||String(s.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase()))throw new Error('No service or student already scheduled. Review this request.')
-            const drafts=tx.findRecordsByFilter('invoices','daycare = {:school} && month = {:month} && status = "draft"','',0,0,{school:schoolId,month:date.slice(0,7)})
+            const drafts=tx.findRecordsByFilter('invoices','daycare = {:school} && status = "draft"','',0,0,{school:schoolId}).filter(i=>i.getString('billing_cycle')==='biweekly'?i.getString('period_start')<=date&&i.getString('period_end')>=date:i.getString('month')===date.slice(0,7))
             if(drafts.length===1){const invoice=drafts[0];putTotals(invoice,[...(JSON.parse(invoice.getString('lines')||'[]')||[]),requestLine(r)]);invoice.set('generated_notes',invoice.getString('generated_notes')+'\n'+requestLine(r).description+': +1 meal.');tx.save(invoice);r.set('invoice_id',invoice.id)}
           }
         }else if(!['acknowledged','resolved'].includes(status))throw new Error('Choose Acknowledged or Resolved.')
@@ -70,6 +92,7 @@ routerAdd('POST', '/api/billing', (e) => {
         }result={dates}
       } else if(action==='generate') {
         if(!clc)throw new Error('CLC access is required.')
+        if(isTle)throw new Error('Use Create Two-Week Draft for TLE.');
         const month=String(body.month||'')
         if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))throw new Error('Choose a valid month.')
         if(body.invoice_date && !lib.validDate(String(body.invoice_date)))throw new Error('Choose a valid invoice date.')
@@ -90,6 +113,13 @@ routerAdd('POST', '/api/billing', (e) => {
         putTotals(invoice,lines);invoice.set('generated_notes',String(invoice.getString('generated_notes')||'')+(extras.length?'\n'+extras.map(r=>{const line=requestLine(r);return line.description+': +'+line.quantity+' meals.'}).join('\n'):''));tx.save(invoice);for(const r of extras){r.set('invoice_id',invoice.id);tx.save(r)}result=plain(invoice)
       } else if(action==='recalculate') {
         if(!clc)throw new Error('CLC access is required.');const invoice=checkInvoice(body.id);if(invoice.getString('status')!=='draft')throw new Error('Only drafts can be recalculated.');
+        if(invoice.getString('billing_cycle')==='biweekly'){
+          const plan=biweeklyLines(invoice.getString('period_start'),invoice.getString('period_end'));
+          const manual=JSON.parse(invoice.getString('lines')||'[]').filter(l=>!l.baseline&&!l.request_id&&!['schedule','carry'].includes(l.adjustment_type));
+          const auto=requests().filter(r=>r.getString('invoice_id')===invoice.id).map(requestLine);
+          const lines=[...plan.lines,...manual,...auto];if(!lines.length)lines.push({description:'Lunch Catering',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true,baseline:true});
+          putTotals(invoice,lines);invoice.set('daily_counts',plan.counts);invoice.set('generated_notes',plan.notes);tx.save(invoice);result=plain(invoice);return;
+        }
         const month=invoice.getString('month'),plan=lib.monthlyPlan(plain(school),history(),menus(),month);
         const issued=tx.findRecordsByFilter('invoices','daycare = {:school} && month = {:month} && status = "issued"','',1,0,{school:schoolId,month}).length>0;
         const saved=JSON.parse(invoice.getString('lines')||'[]'),manual=saved.filter(line=>!line.request_id && line.adjustment_type!=='schedule' && !line.baseline && !line.description.startsWith(month+' Lunch Catering') && line.description!==month+' Additional Adjustment' && line.description!==lib.monthLabel(month)+' Additional Adjustment');
@@ -101,17 +131,21 @@ routerAdd('POST', '/api/billing', (e) => {
         const invoice=checkInvoice(body.id)
         if(invoice.getString('status')!=='draft')throw new Error('Issued invoices are frozen. Put corrections on a new invoice.')
         if(action==='delete'){
-          for(const r of requests().filter(r=>r.getString('invoice_id')===invoice.id)){r.set('invoice_id','');tx.save(r)}tx.delete(invoice);result={deleted:true}
+          if(invoice.getString('billing_cycle')==='biweekly'&&allInvoices().some(i=>i.billing_cycle==='biweekly'&&i.period_start>invoice.getString('period_start')))throw new Error('Only the latest two-week draft can be deleted.');
+          for(const r of requests().filter(r=>r.getString('invoice_id')===invoice.id)){r.set('invoice_id','');tx.save(r)}tx.delete(invoice);if(invoice.getString('billing_cycle')==='biweekly'&&!allInvoices().some(i=>i.billing_cycle==='biweekly')){school.set('billing_anchor','');tx.save(school)}result={deleted:true}
         }else{
           if(!String(body.number||'').trim()||!lib.validDate(String(body.invoice_date||'')))throw new Error('Invoice number and date are required.')
           const duplicate=tx.findRecordsByFilter('invoices','number = {:number} && id != {:id}','',1,0,{number:String(body.number).trim(),id:invoice.id});if(duplicate.length)throw new Error('Invoice number already exists.')
           // Auto-adjustments cannot be removed or converted to manual lines.
           const linked=requests().filter(r=>r.getString('invoice_id')===invoice.id)
           if(!Array.isArray(body.lines))throw new Error('Invoice lines are required.')
-          const manual=body.lines.filter(line=>!line.request_id)
+          const biweekly=invoice.getString('billing_cycle')==='biweekly';
+          const manual=body.lines.filter(line=>!line.request_id&&(!biweekly||line.adjustment_type!=='carry'));
+          for(const line of manual){delete line.carry_source;delete line.carry_date;delete line.carry_snapshot}
+          if(biweekly)manual.push(...lib.carryForward(plain(school),history(),menus(),allInvoices(),invoice.getString('period_start')));
           const auto=linked.map(r=>requestLine(r));putTotals(invoice,[...manual,...auto]);
-          const notes=invoice.getString('generated_notes').split('\n').filter(line=>!line.startsWith('Midmonth additions:')&&!line.startsWith('Midmonth removals:')&&!line.startsWith('One-off lunch:'));
-          for(const line of [...manual,...auto].filter(l=>l.request_id||l.adjustment_type==='schedule'))notes.push(line.description+': '+(line.quantity>0?'+':'')+line.quantity+' meals.');
+          const notes=invoice.getString('generated_notes').split('\n').filter(line=>!line.startsWith('Midmonth additions:')&&!line.startsWith('Midmonth removals:')&&!line.startsWith('One-off lunch:')&&!line.startsWith('Period additions:')&&!line.startsWith('Period removals:')&&!line.startsWith('Schedule correction for '));
+          for(const line of [...manual,...auto].filter(l=>l.request_id||['schedule','carry'].includes(l.adjustment_type)))notes.push(line.description+': '+(line.quantity>0?'+':'')+line.quantity+' meals.');
           invoice.set('generated_notes',notes.filter(Boolean).join('\n'))
           invoice.set('number',String(body.number).trim());invoice.set('invoice_date',String(body.invoice_date));invoice.set('notes',String(body.notes||''));if(action==='issue')invoice.set('status','issued');tx.save(invoice);result=plain(invoice)
         }

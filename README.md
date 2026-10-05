@@ -68,3 +68,11 @@ The first check type-checks and builds the web app. The tests check weekday calc
 Never commit `pb_data` or frontend environment files. Keep development seed data out of public releases.
 
 School staff always have a read-only Menu tab. Roster and substitution sections follow each school’s feature toggles; the Students & Classrooms tab is hidden when both are off. Turning off roster operations does not disable accounts. Parents open the current month as an embedded PDF with a download fallback.
+
+### TLE Two-Week Invoices
+
+In Invoices, select TLE and enter the first service Monday as MM-DD-YYYY. Create Two-Week Draft calculates the second Friday as the period end and due date, and defaults the invoice date to the first Friday. Subsequent periods advance 14 days automatically. Review and issue each draft before creating the next period; download and email the PDF manually.
+
+Scheduled counts, rates, closures, and effective-date changes determine the charges. The period can cross a month or year boundary. Changes to an issued period appear as protected correction lines on the next invoice, with the original invoice number, service date, previous and corrected counts, and rate. Issued corrections are tracked so they do not repeat. Recalculate Schedule refreshes a draft while preserving manual adjustments.
+
+Only the latest two-week draft can be deleted; its period becomes available again. Deleting the first draft before issuance lets you choose a different first Monday. Overlapping invoices are blocked, including existing monthly invoices. Lightbridge remains monthly and due upon receipt. Deploy the new PocketBase migration and hooks along with the frontend.
