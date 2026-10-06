@@ -107,7 +107,9 @@
   .notes-requests fieldset { border:0; padding:0; }
   .notes-requests .list-row:first-of-type { margin-top:var(--space-1); }
   .invoice-page .panel-stack > label { max-width:100%; }
-  .invoice-page .panel-stack > label > input { width:min(100%,360px); }
+  .invoice-page .panel-stack > label > input:not([type=checkbox]) { width:min(100%,360px); }
+  .invoice-page .panel-stack > .checkline { align-self:flex-start; justify-content:flex-start; gap:.4rem; }
+  .invoice-page .panel-stack > .checkline > input[type=checkbox] { width:16px; height:16px; min-width:16px; min-height:16px; margin:0; padding:0; flex:none; }
   .invoice-page .panel-stack > label > textarea { width:100%; }
   .invoice-page details { padding-top:var(--space-3); border-top:1px solid var(--line); }
   .invoice-page summary { cursor:pointer; font-weight:700; margin-bottom:var(--space-3); }
