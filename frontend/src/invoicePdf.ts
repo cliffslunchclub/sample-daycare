@@ -1,5 +1,6 @@
 export type InvoiceLine = { description: string; quantity: number; rate: number; taxable: boolean; amount_cents?: number; request_id?: string; adjustment_type?: string; baseline?: boolean; carry_source?: string; carry_date?: string; carry_snapshot?: {quantity:number;rate:number} };
-export type Invoice = { id: string; daycare: string; school_name: string; number: string; month: string; invoice_date: string; billing_cycle?: string; period_start?: string; period_end?: string; due_date?: string; status: string; notes: string; generated_notes?: string; lines: InvoiceLine[]; daily_counts: {date: string; quantity: number; rate: number; closed: boolean}[]; subtotal_cents: number; tax_cents: number; total_cents: number };
+export type Invoice = { id: string; daycare: string; school_name: string; number: string; month: string; invoice_date: string; billing_cycle?: string; period_start?: string; period_end?: string; due_date?: string; show_payment_terms?: boolean; status: string; notes: string; generated_notes?: string; lines: InvoiceLine[]; daily_counts: {date: string; quantity: number; rate: number; closed: boolean}[]; subtotal_cents: number; tax_cents: number; total_cents: number };
+export const showInvoiceTerms = (invoice: Invoice) => invoice.show_payment_terms ?? (invoice.billing_cycle === 'biweekly' || !!invoice.due_date);
 export const money = (cents: number) => new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(cents/100);
 export const invoiceDate = (value: string) => /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(5,7)+'-'+value.slice(8,10)+'-'+value.slice(0,4) : value;
 export const invoiceDatesInText = (value: string) => String(value||'').replace(/\b\d{4}-\d{2}-\d{2}\b/g, invoiceDate).replace(/\b(\d{4}-\d{2})(?= Lunch Catering| Additional Adjustment)/g, invoiceMonth);
@@ -36,7 +37,7 @@ export function invoicePdf(invoice:Invoice):Blob {
     if(first){
       const schoolRows=wrap(invoice.school_name,496,11,true),top=665,height=158+(schoolRows.length-1)*14;band(top,height);
       text('Bill to',56,top-23,9,true,muted);let yy=top-41;for(const row of schoolRows){text(row,56,yy,11,true);yy-=14;}rule(yy-4,56,556);yy-=26;
-      const info=[['Invoice no.',invoice.number],['Invoice date',invoiceDate(invoice.invoice_date)],[invoice.period_start?'Service period':'Service month',invoice.period_start?invoiceDate(invoice.period_start)+' to '+invoiceDate(invoice.period_end||''):invoiceMonth(invoice.month)],['Due date',invoice.due_date?invoiceDate(invoice.due_date):'Due upon receipt'],['Terms',invoice.due_date?'Due by end of service period':'Due upon receipt']];
+      const info=[['Invoice no.',invoice.number],['Invoice date',invoiceDate(invoice.invoice_date)],[invoice.period_start?'Service period':'Service month',invoice.period_start?invoiceDate(invoice.period_start)+' to '+invoiceDate(invoice.period_end||''):invoiceMonth(invoice.month)],...(showInvoiceTerms(invoice) ? [['Due date',invoice.due_date?invoiceDate(invoice.due_date):'Due upon receipt'],['Terms',invoice.due_date?'Due by end of service period':'Due upon receipt']] : [])];
       for(const [label,value]of info){text(label+':',56,yy,9);const rows=wrap(value,390,9);for(const row of rows){text(row,158,yy,9);yy-=14;}}
       y=top-height-30;
     }else{rule(671);text('Invoice '+invoice.number+' - continued',40,653,10,true);y=626;}
