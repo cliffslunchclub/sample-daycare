@@ -57,11 +57,11 @@ function monthlyPlan(school,history,menus,month,rangeStart,rangeEnd) {
       const version=history.filter(row=>row.entity==='school'&&row.effective_date<=d.date).sort((a,b)=>b.effective_date.localeCompare(a.effective_date))[0];adjustment(d.quantity-baseQuantity,'School counts',version.effective_date);
     }
   }
-  const lines=Object.keys(groups).map(rate=>({description:(rangeStart?displayDate(start)+' to '+displayDate(rangeEnd):monthLabel(month))+' Lunch Catering - baseline',baseline:true,quantity:groups[rate],rate:Number(rate),taxable:true})).concat(Object.values(changes));
+  const lines=Object.keys(groups).map(rate=>({description:(rangeStart?displayDate(start)+' to '+displayDate(rangeEnd):monthLabel(month))+' Lunch Catering',baseline:true,quantity:groups[rate],rate:Number(rate),taxable:true})).concat(Object.values(changes));
   const service=counts.filter(d=>!d.closed && d.quantity>0), notes=['Total service days: '+service.length+'.'];
   const baseDays=counts.filter(d=>!d.closed).map(d=>({...d,quantity:baseline.count_mode==='manual'?Number((baseline.baseline_counts||{})[d.day]||0):entities.reduce((n,id)=>n+attends(latest(history,id,start),d.day),0)})).filter(d=>d.quantity>0);
-  if(baseDays.length && baseDays.every(d=>d.quantity===baseDays[0].quantity))notes.push('Baseline: '+baseDays[0].quantity+' meals per day x '+baseDays.length+' days = '+baseDays.reduce((n,d)=>n+d.quantity,0)+' meals.');
-  else for(const day of weekdays.slice(1,6)){const days=baseDays.filter(d=>d.day===day);if(days.length)notes.push(day+': '+days[0].quantity+' meals/day x '+days.length+' days = '+days.reduce((n,d)=>n+d.quantity,0)+' baseline meals.');}
+  if(baseDays.length && baseDays.every(d=>d.quantity===baseDays[0].quantity))notes.push(''+baseDays[0].quantity+' meals per day x '+baseDays.length+' days = '+baseDays.reduce((n,d)=>n+d.quantity,0)+' meals.');
+  else for(const day of weekdays.slice(1,6)){const days=baseDays.filter(d=>d.day===day);if(days.length)notes.push(day+': '+days[0].quantity+' meals/day x '+days.length+' days = '+days.reduce((n,d)=>n+d.quantity,0)+' meals.');}
   for(const line of Object.values(changes))notes.push(line.description+': '+(line.quantity>0?'+':'')+line.quantity+' meals.');
   notes.push('Total scheduled meals: '+service.reduce((n,d)=>n+d.quantity,0)+'.');
   return {lines,counts,notes:notes.join('\n')};
