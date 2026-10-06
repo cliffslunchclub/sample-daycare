@@ -30,7 +30,7 @@ export function invoicePdf(invoice:Invoice):Blob {
   function tableHeader(){text('#',40,y,9,true);text('Product or service',62,y,9,true);text('Description',210,y,9,true);right('Qty',433,y,9,true);right('Rate',493,y,9,true);right('Amount',572,y,9,true);rule(y-10);y-=30;}
   function newPage(first=false,table=false){
     if(content)pages.push(content);content='';
-    text('INVOICE',40,750,13,true,green);right(invoice.status==='draft'?'DRAFT - Not issued':'Cliffs Lunch Club',572,750,10);
+    text('INVOICE',40,750,13,true,green);right('Cliffs Lunch Club',572,750,10);
     text('Kim & Sons Food Company LLC',40,724,16,true);text('41 Sylvan Ave',40,704,9);text('Englewood Cliffs, NJ 07632',40,690,9);
     text('cliffscafe41@gmail.com',305,704,9);text('+1 (201) 947-5515',305,690,9);
     if(first){
