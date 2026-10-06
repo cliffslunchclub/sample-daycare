@@ -4,6 +4,7 @@ export const showInvoiceTerms = (invoice: Invoice) => invoice.show_payment_terms
 export const money = (cents: number) => new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(cents/100);
 export const invoiceDate = (value: string) => /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(5,7)+'-'+value.slice(8,10)+'-'+value.slice(0,4) : value;
 export const invoiceDatesInText = (value: string) => String(value||'').replace(/\s*[-–]\s*baseline\b/gi, '').replace(/\bbaseline:\s*/gi, '').replace(/\bbaseline\s+/gi, '').replace(/\b\d{4}-\d{2}-\d{2}\b/g, invoiceDate).replace(/\b(\d{4}-\d{2})(?= Lunch Catering| Additional Adjustment)/g, invoiceMonth);
+export const invoiceBreakdownText = (value: string) => invoiceDatesInText(value).split(/\r?\n/).map(line => line.replace(/\.+\s*$/, '')).join('\n');
 export const invoiceMonth = (value: string) => /^\d{4}-\d{2}$/.test(value) ? new Intl.DateTimeFormat('en-US',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(value+'-01T12:00:00Z')) : value;
 const literal = (s:string) => s.replace(/[^\x20-\x7e]/g,'-').replace(/[\\()]/g,'\\$&');
 const fontWidths = [[278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584], [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584]];
@@ -63,7 +64,7 @@ export function invoicePdf(invoice:Invoice):Blob {
   text('Total / Balance Due',370,yy,10,true);right(money(invoice.total_cents),572,yy,12,true);rule(yy-15,370,572);
   const totalsBottom=yy-15;
   text('Service breakdown',40,summaryTop,10,true);let breakdownY=summaryTop-19;
-  const breakdown=wrap(invoice.generated_notes||'See invoice line items for service details.',300,9);
+  const breakdown=wrap(invoiceBreakdownText(invoice.generated_notes||'See invoice line items for service details.'),300,9);
   let remaining:string[]=[];
   for(let i=0;i<breakdown.length;i++){if(breakdownY<70){remaining=breakdown.slice(i);break;}text(breakdown[i],40,breakdownY,9);breakdownY-=13;}
   y=Math.min(breakdownY,totalsBottom)-26;
