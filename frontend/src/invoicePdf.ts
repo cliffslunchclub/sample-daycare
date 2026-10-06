@@ -33,7 +33,7 @@ export function invoicePdf(invoice:Invoice):Blob {
     if(content)pages.push(content);content='';
     text('INVOICE',40,770,13,true,green);
     text('Kim & Sons Food Company LLC',40,747,16,true);text('41 Sylvan Ave',40,727,9);text('Englewood Cliffs, NJ 07632',40,713,9);
-    text('cliffscafe41@gmail.com',40,696,9);text('+1 (201) 947-5515',40,682,9);
+    text('cliffs@cliffslunchclub.com',40,696,9);text('+1 (201) 947-5515',40,682,9);
     if(first){
       const schoolRows=wrap(invoice.school_name,496,11,true),top=665,height=158+(schoolRows.length-1)*14;band(top,height);
       text('Bill to',56,top-23,9,true,muted);let yy=top-41;for(const row of schoolRows){text(row,56,yy,11,true);yy-=14;}rule(yy-4,56,556);yy-=26;
