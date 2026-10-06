@@ -109,7 +109,7 @@ routerAdd('POST', '/api/billing', (e) => {
         const base=prefix+month.slice(5)+month.slice(2,4), same=tx.findRecordsByFilter('invoices','number ~ {:prefix}','',0,0,{prefix:base})
         let number=base,n=2;while(same.some(row=>row.getString('number')===number))number=base+'.'+n++
         const invoice=new Record(tx.findCollectionByNameOrId('invoices'))
-        for(const [k,v] of Object.entries({daycare:schoolId,school_name:school.getString('name'),month,invoice_date:String(body.invoice_date||lib.nyDate()),number,status:'draft',daily_counts:alreadyIssued?[]:counts,notes:'Due upon receipt.',generated_notes:alreadyIssued?'Adjustment invoice. Monthly scheduled lunches were already invoiced.':plan.notes}))invoice.set(k,v)
+        for(const [k,v] of Object.entries({daycare:schoolId,school_name:school.getString('name'),month,invoice_date:String(body.invoice_date||lib.nyDate()),number,status:'draft',daily_counts:alreadyIssued?[]:counts,notes:'',generated_notes:alreadyIssued?'Adjustment invoice. Monthly scheduled lunches were already invoiced.':plan.notes}))invoice.set(k,v)
         putTotals(invoice,lines);invoice.set('generated_notes',String(invoice.getString('generated_notes')||'')+(extras.length?'\n'+extras.map(r=>{const line=requestLine(r);return line.description+': +'+line.quantity+' meals.'}).join('\n'):''));tx.save(invoice);for(const r of extras){r.set('invoice_id',invoice.id);tx.save(r)}result=plain(invoice)
       } else if(action==='recalculate') {
         if(!clc)throw new Error('CLC access is required.');const invoice=checkInvoice(body.id);if(invoice.getString('status')!=='draft')throw new Error('Only drafts can be recalculated.');
