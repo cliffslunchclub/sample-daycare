@@ -8,19 +8,19 @@ test('menu export aligns dates to weekday columns and escapes menu text', () => 
   assert.equal(calls.length, 22);
   assert.ok(html.includes('School &lt;one&gt;'));
   assert.ok(html.includes('Pasta &amp; peas<br>Garlic bread'));
-  assert.match(html, /9\/28\/26[\s\S]*9\/29\/26[\s\S]*9\/30\/26[\s\S]*10\/1\/26[\s\S]*10\/2\/26/);
-  assert.ok(html.includes('No lunch service'));
-  assert.ok(html.includes('bgcolor="#1c528e"'));
-  assert.ok(html.includes('bgcolor="#d9ead3"'));
-  assert.ok(html.includes('bgcolor="#fff2cc"'));
-  assert.ok(html.includes('bgcolor="#f4cccc"'));
+  assert.match(html, /09-28-2026[\s\S]*09-29-2026[\s\S]*09-30-2026[\s\S]*10-01-2026[\s\S]*10-02-2026/);
+  assert.ok(html.includes('No Lunch Service'));
+  assert.ok(html.includes('bgcolor="#e7eee8"'));
+  assert.ok(html.includes('bgcolor="#ffffff"'));
+  assert.ok(html.includes('bgcolor="#ffffff"'));
+  assert.ok(html.includes('bgcolor="#f0f1f0"'));
 });
 
 test('month starting on weekend has no empty leading week', () => {
   const html = menuExportHtml('School', '2026-11', () => ({ menu: 'Lunch' }));
-  assert.ok(!html.includes('10/26/26'));
-  assert.ok(html.includes('11/2/26'));
-  assert.ok(html.includes('11/30/26'));
+  assert.ok(!html.includes('10-26-2026'));
+  assert.ok(html.includes('11-02-2026'));
+  assert.ok(html.includes('11-30-2026'));
 });
 
 
@@ -34,5 +34,9 @@ test('Word download is a native DOCX and includes the selected month in filename
   assert.ok(contents.includes('October 2026'));
   assert.ok(contents.includes('Pasta &amp; peas'));
   assert.ok(contents.includes('word/header1.xml'));
-  assert.ok(contents.includes('w:fill="fff2cc"'));
+  assert.ok(contents.includes('w:fill="FFFFFF"'));
+  assert.ok(contents.includes('w:orient="landscape"'));
+  assert.ok(contents.includes('09-28-2026'));
+  assert.ok(contents.includes('<w:jc w:val="center"/>'));
+  assert.ok(contents.includes('<w:b/>'));
 });
