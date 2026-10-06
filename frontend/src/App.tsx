@@ -20,9 +20,9 @@ const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]
 const dateOnly = (value: string) => String(value || '').slice(0, 10);
 const localMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
 const schoolSlugBySubdomain: Record<string, string> = {
-  bergenfield: 'lightbridge-bergenfield', 'lightbridge-bergenfield': 'lightbridge-bergenfield',
-  fortlee: 'lightbridge-fort-lee', 'fort-lee': 'lightbridge-fort-lee', 'lightbridge-fort-lee': 'lightbridge-fort-lee',
-  tle: 'tle-englewood-cliffs', 'tle-englewood-cliffs': 'tle-englewood-cliffs',
+  'lba-bf': 'lightbridge-bergenfield', bergenfield: 'lightbridge-bergenfield', 'lightbridge-bergenfield': 'lightbridge-bergenfield',
+  'lba-fl': 'lightbridge-fort-lee', fortlee: 'lightbridge-fort-lee', 'fort-lee': 'lightbridge-fort-lee', 'lightbridge-fort-lee': 'lightbridge-fort-lee',
+  'tle-ec': 'tle-englewood-cliffs', tle: 'tle-englewood-cliffs', 'tle-englewood-cliffs': 'tle-englewood-cliffs',
 };
 const schoolNameBySlug: Record<string, string> = {
   'lightbridge-bergenfield': 'Lightbridge Bergenfield',
@@ -30,9 +30,9 @@ const schoolNameBySlug: Record<string, string> = {
   'tle-englewood-cliffs': 'TLE Englewood Cliffs',
 };
 const schoolSubdomainBySlug: Record<string, string> = {
-  'lightbridge-bergenfield': 'bergenfield',
-  'lightbridge-fort-lee': 'fortlee',
-  'tle-englewood-cliffs': 'tle',
+  'lightbridge-bergenfield': 'lba-bf',
+  'lightbridge-fort-lee': 'lba-fl',
+  'tle-englewood-cliffs': 'tle-ec',
 };
 const isLocalHost = () => ['localhost', '127.0.0.1'].includes(window.location.hostname);
 function schoolMenuUrl(slug: string) {
@@ -49,7 +49,7 @@ function schoolSlugForPage(params: URLSearchParams) {
 function App() {
   const params = new URLSearchParams(window.location.search);
   const schoolSlug = schoolSlugForPage(params);
-  const isSuperAdminDomain = window.location.hostname.toLowerCase().split('.')[0] === 'admin';
+  const isSuperAdminDomain = window.location.hostname.toLowerCase().split('.')[0] === 'preschool';
   const publicSlug = params.get('menu');
   if (publicSlug) return <SchoolSelection />;
   if (params.get('parents') === '1') return <SchoolSelection />;
@@ -59,7 +59,7 @@ function App() {
 
 function LandingPage({ schoolSlug }: { schoolSlug: string }) {
   const schoolName = schoolNameBySlug[schoolSlug];
-  const superAdminUrl = isLocalHost() ? '/?admin=1' : 'https://admin.cliffslunchclub.com/';
+  const superAdminUrl = isLocalHost() ? '/?admin=1' : 'https://preschool.cliffslunchclub.com/';
   return <main className="landing-page">
     <header className="landing-brand"><div><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></div><a className="super-admin-link" href={superAdminUrl}>CLC LOGIN</a></header>
     <section className="landing-content">

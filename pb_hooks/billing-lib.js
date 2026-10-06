@@ -72,7 +72,7 @@ function biweeklyPeriod(start) {
   return {period_start:start,period_end:addDays(start,11),invoice_date:addDays(start,4),due_date:addDays(start,11),next_start:addDays(start,14)};
 }
 function carryForward(school,history,menus,invoices,start) {
-  const issued=invoices.filter(i=>i.status==='issued'),lines=[];
+  const issued=invoices.filter(i=>(i.status==='issued'||i.shared)),lines=[];
   for(const source of issued.filter(i=>i.billing_cycle==='biweekly'&&i.period_end<start)) {
     for(const old of source.daily_counts||[]) {
       if(['Saturday','Sunday'].includes(weekdays[new Date(old.date+'T12:00:00Z').getUTCDay()]))continue;

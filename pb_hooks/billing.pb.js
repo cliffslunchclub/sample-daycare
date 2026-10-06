@@ -24,7 +24,7 @@ routerAdd('POST', '/api/billing', (e) => {
         const next=nextPeriod();result={anchor:school.getString('billing_anchor'),...(next?lib.biweeklyPeriod(next):{})}
       } else if(action==='generate-biweekly'){
         if(!clc||!isTle)throw new Error('CLC access and TLE school are required.');
-        if(allInvoices().some(i=>i.billing_cycle==='biweekly'&&i.status==='draft'))throw new Error('Review and issue the existing two-week draft before creating the next one.');
+        if(allInvoices().some(i=>i.billing_cycle==='biweekly'&&i.status==='draft'&&!i.shared))throw new Error('Save the existing two-week invoice before creating the next one.');
         const expected=nextPeriod(),start=String(body.period_start||expected||''),period=lib.biweeklyPeriod(start);
         if(expected&&start!==expected)throw new Error('The next period starts '+lib.displayDate(expected)+'.');
         const overlap=allInvoices().some(i=>{const from=i.period_start||i.month+'-01',to=i.period_end||lib.addDays(i.month+'-01',new Date(Number(i.month.slice(0,4)),Number(i.month.slice(5)),0).getDate()-1);return from<=period.period_end&&to>=start});
@@ -147,10 +147,10 @@ routerAdd('POST', '/api/billing', (e) => {
           const notes=invoice.getString('generated_notes').split('\n').filter(line=>!line.startsWith('Midmonth additions:')&&!line.startsWith('Midmonth removals:')&&!line.startsWith('One-off lunch:')&&!line.startsWith('Period additions:')&&!line.startsWith('Period removals:')&&!line.startsWith('Schedule correction for '));
           for(const line of [...manual,...auto].filter(l=>l.request_id||['schedule','carry'].includes(l.adjustment_type)))notes.push(line.description+': '+(line.quantity>0?'+':'')+line.quantity+' meals.');
           invoice.set('generated_notes',notes.filter(Boolean).join('\n'))
-          invoice.set('number',String(body.number).trim());invoice.set('invoice_date',String(body.invoice_date));invoice.set('notes',String(body.notes||''));if(typeof body.show_payment_terms==='boolean')invoice.set('show_payment_terms',body.show_payment_terms);if(action==='issue')invoice.set('status','issued');tx.save(invoice);result=plain(invoice)
+          invoice.set('number',String(body.number).trim());invoice.set('invoice_date',String(body.invoice_date));invoice.set('notes',String(body.notes||''));invoice.set('shared',true);if(typeof body.show_payment_terms==='boolean')invoice.set('show_payment_terms',body.show_payment_terms);if(action==='issue')invoice.set('status','issued');tx.save(invoice);result=plain(invoice)
         }
       } else if(action==='flag') {
-        const invoice=checkInvoice(body.id);if(invoice.getString('status')!=='issued')throw new Error('Only issued invoices can be flagged.')
+        const invoice=checkInvoice(body.id);if(invoice.getString('status')!=='issued'&&!invoice.getBool('shared'))throw new Error('Only saved invoices can be flagged.')
         const message=String(body.message||'').trim();if(!message||message.length>4000)throw new Error('Enter a correction message.')
         const flag=new Record(tx.findCollectionByNameOrId('invoice_flags'));for(const[k,v]of Object.entries({daycare:schoolId,invoice:invoice.id,message,status:'open',created_by:e.auth.getString('display_name')||e.auth.getString('email')}))flag.set(k,v);tx.save(flag);result=plain(flag)
       } else if(action==='resolve-flag') {

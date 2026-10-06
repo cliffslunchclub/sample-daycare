@@ -1,0 +1,63 @@
+name: Deploy preschools
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: preschool-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: vars.DEPLOY_READY == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --prefix frontend
+      - run: npm test
+      - run: npm --prefix frontend run build
+        env:
+          VITE_POCKETBASE_URL: https://clc-preschools.pockethost.io
+      - name: Configure SSH
+        env:
+          SG_KEY: ${{ secrets.SITEGROUND_SSH_KEY }}
+          PH_KEY: ${{ secrets.POCKETHOST_SSH_KEY }}
+          HOST_KEYS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SG_KEY" > ~/.ssh/siteground
+          printf '%s\n' "$PH_KEY" > ~/.ssh/pockethost
+          printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/*
+      - name: Upload backend code
+        env:
+          PH_USER: ${{ secrets.POCKETHOST_USER }}
+        run: |
+          printf '%s\n' 'put -r pb_hooks /clc-preschools/' 'put -r pb_migrations /clc-preschools/' > /tmp/backend.sftp
+          sftp -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/pockethost -P 2222 -b /tmp/backend.sftp "$PH_USER@ftp.pockethost.io"
+      - name: Upload frontend to four subdomains
+        env:
+          SG_HOST: ${{ secrets.SITEGROUND_HOST }}
+          SG_USER: ${{ secrets.SITEGROUND_USER }}
+          SG_PORT: ${{ vars.SITEGROUND_PORT || '18765' }}
+          SG_ROOT: ${{ vars.SITEGROUND_ROOT }}
+        run: |
+          python3 - <<'PY'
+          import os
+          root=os.environ['SG_ROOT'].rstrip('/')
+          if not root or '\n' in root or '"' in root:
+              raise SystemExit('Set SITEGROUND_ROOT to the verified absolute folder containing your subdomain folders')
+          with open('/tmp/frontend.sftp','w') as f:
+              for domain in ['preschool','lba-bf','lba-fl','tle-ec']:
+                  target=f'{root}/{domain}.cliffslunchclub.com/public_html'
+                  f.write(f'put -r frontend/dist/assets "{target}/"\n')
+                  f.write(f'put frontend/dist/index.html "{target}/index.html"\n')
+          PY
+          sftp -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/siteground -P "$SG_PORT" -b /tmp/frontend.sftp "$SG_USER@$SG_HOST"
