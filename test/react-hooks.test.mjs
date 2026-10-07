@@ -49,3 +49,24 @@ test('school-admin load replaces All daycares with assigned school and ignores s
   assert.equal(rendered, 1);
   assert.equal(selected, 'school');
 });
+
+test('weekly summary keeps allergy meals in totals and Subs, excluding them from Standard', async () => {
+  const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../frontend/src/App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const summary = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'WeeklySummary');
+  const js = ts.transpileModule(summary.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
+  const { runInNewContext } = await import('node:vm');
+  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const context = { weekdays, React: { createElement: (type, props, ...children) => ({ type, props, children }) } };
+  runInNewContext(js, context);
+  const tree = context.WeeklySummary({ locations: [{ id: 'fl', name: 'Lightbridge Fort Lee', public_slug: 'lightbridge-fort-lee', count_mode: 'manual', baseline_counts: Object.fromEntries(weekdays.map(day => [day, 62])), clc_managed_counts: Object.fromEntries(weekdays.map(day => [day, 2])) }], students: [], subs: [] });
+  const nodes = [];
+  function walk(node) { if (Array.isArray(node)) node.forEach(walk); else if (node && typeof node === 'object') { nodes.push(node); walk(node.children); } }
+  walk(tree);
+  const text = node => Array.isArray(node) ? node.map(text).join('') : node && typeof node === 'object' ? text(node.children) : node === false || node == null ? '' : String(node);
+  const row = nodes.find(node => node.type === 'tr' && node.props?.key === 'Monday:all');
+  assert.deepEqual(row.children.filter(node => node?.type === 'td').map(text), ['64', '62', '2', '2 Allergies']);
+  assert.ok(nodes.some(node => node.type === 'th' && text(node) === 'Standard'));
+  const pizza = nodes.find(node => node.type === 'tr' && text(node).includes('Friday pizza'));
+  assert.ok(pizza);
+  assert.equal(text(pizza.children.find(node => node?.type === 'td')), '21');
+});
