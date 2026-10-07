@@ -218,3 +218,12 @@
 .audit-details { margin-top: 8px; max-width: 650px; }
 .audit-details summary { cursor: pointer; color: #354f3d; font-weight: 600; }
 .audit-details pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: .85rem; max-width: 260px; }
+
+.discord-settings > summary { display: flex; align-items: center; gap: 12px; cursor: pointer; list-style: none; }
+.discord-settings > summary::-webkit-details-marker { display: none; }
+.discord-settings > summary::before { content: "›"; font-size: 1.5rem; line-height: 1; color: #5b8067; }
+.discord-settings[open] > summary::before { transform: rotate(90deg); }
+.discord-settings > summary h2 { flex: 1; margin: 0; }
+.discord-settings > summary:focus-visible { outline: 2px solid #5b8067; outline-offset: 5px; border-radius: 4px; }
+.discord-settings[open] > .panel-stack { margin-top: 16px; }
+@media (max-width: 600px) { .discord-settings > summary { flex-wrap: wrap; } .discord-settings > summary .small { margin-left: 24px; } }
