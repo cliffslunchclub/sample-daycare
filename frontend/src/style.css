@@ -201,3 +201,14 @@
 
 .roster-search label { width:min(100%,360px); }
 .roster-search input { width:100%; }
+
+@media screen {
+  .invoice-page .breakdown-recalculate {
+    background:#e7eee8;
+    border:1px solid #8eab96;
+    color:#354f3d;
+    font-weight:700;
+  }
+  .invoice-page .breakdown-recalculate:hover { background:#d8e6da; border-color:#5b8067; }
+  .invoice-page .breakdown-recalculate:focus-visible { outline:2px solid #5b8067; outline-offset:2px; }
+}
