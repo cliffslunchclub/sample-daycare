@@ -64,3 +64,13 @@ test('next-day additions and removals leave today unchanged and reconcile the in
  assert.equal(plan.lines.reduce((sum,l)=>sum+l.quantity,0),plan.counts.reduce((sum,d)=>sum+d.quantity,0));
  assert.equal(lib.addDays(lib.nyDate(new Date('2026-11-01T05:30:00Z')),1),'2026-11-02');
 });
+
+test('three-to-two-day reduction starts tomorrow and keeps today billed',()=>{
+ const h=[{entity:'school',effective_date:'2026-10-01',snapshot:{count_mode:'roster',invoice_rate:4}},{entity:'nolan',effective_date:'2026-10-01',snapshot:{name:'Nolan',active:true,service_days:['Monday','Wednesday','Friday']}},{entity:'nolan',effective_date:'2026-10-08',snapshot:{name:'Nolan',active:true,service_days:['Monday','Friday']}}];
+ assert.equal(lib.daily(school,h,[],'2026-10-07').quantity,1);
+ assert.equal(lib.daily(school,h,[],'2026-10-14').quantity,0);
+ const plan=lib.monthlyPlan(school,h,[],'2026-10');
+ const credit=plan.lines.find(line=>line.adjustment_type==='schedule');
+ assert.equal(credit.quantity,-3);assert.equal(credit.effective_date,'2026-10-08');
+ assert.equal(plan.lines.reduce((sum,line)=>sum+line.quantity,0),plan.counts.reduce((sum,day)=>sum+day.quantity,0));
+});
