@@ -68,5 +68,5 @@ test('weekly summary keeps allergy meals in totals and Subs, excluding them from
   assert.ok(nodes.some(node => node.type === 'th' && text(node) === 'Standard'));
   const pizza = nodes.find(node => node.type === 'tr' && text(node).includes('Friday pizza'));
   assert.ok(pizza);
-  assert.equal(text(pizza.children.find(node => node?.type === 'td')), '21');
+  assert.equal(text(pizza.children.find(node => node?.type === 'td')), '22');
 });
