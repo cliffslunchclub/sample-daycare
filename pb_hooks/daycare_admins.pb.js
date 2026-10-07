@@ -16,29 +16,30 @@ routerAdd("POST", "/api/daycare-admins", (e) => {
   const email = String(body.email || "").trim().toLowerCase()
   const password = String(body.password || "")
   const daycareId = String(body.daycare || "")
-  if (!name || !email || password.length < 12 || !daycareId) {
+  const accountId = String(body.id || "")
+  if (!name || !email || (!accountId && password.length < 12) || (password && password.length < 12) || !daycareId) {
     return e.json(400, { message: "Name, daycare, email, and a password of at least 12 characters are required." })
   }
   try {
-    $app.findFirstRecordByFilter("users", "email = {:email}", { email })
-    return e.json(400, { message: "An account with that email already exists." })
+    const existing = $app.findFirstRecordByFilter("users", "email = {:email}", { email })
+    if (existing.id !== accountId) return e.json(400, { message: "An account with that email already exists." })
   } catch (err) {}
   try {
     $app.findRecordById("daycares", daycareId)
-    const record = new Record($app.findCollectionByNameOrId("users"))
+    const record = accountId ? $app.findRecordById("users", accountId) : new Record($app.findCollectionByNameOrId("users"))
+    if (accountId && record.getString("role") !== "daycare_admin") return e.json(403, { message: "Only school admin accounts can be edited here." })
     record.set("email", email)
-    record.set("password", password)
-    record.set("passwordConfirm", password)
+    if (password) record.setPassword(password)
     record.set("emailVisibility", true)
     record.set("verified", true)
     record.set("role", "daycare_admin")
     record.set("daycare", daycareId)
     record.set("display_name", name)
-    record.set("active", true)
+    record.set("active", accountId ? body.active !== false : true)
     $app.save(record)
-    return e.json(201, { id: record.id, message: "Daycare admin created." })
+    return e.json(accountId ? 200 : 201, { id: record.id, message: accountId ? "School admin updated." : "School admin created." })
   } catch (err) {
-    return e.json(400, { message: "Could not create the account. Check the email and daycare." })
+    return e.json(400, { message: "Could not save the account. Check the email, school, and password (at least 12 characters)." })
   }
 })
 

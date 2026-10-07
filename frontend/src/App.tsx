@@ -531,13 +531,7 @@ function SchoolAdminsPage({ daycares, error }: { daycares: Daycare[]; error: (s:
   async function save(e: FormEvent) {
     e.preventDefault(); setSaving(true); setNotice('');
     try {
-      if (editing) {
-        const data: Row = { display_name: name.trim(), email: email.trim(), daycare: schoolId, active: active, role: 'daycare_admin' };
-        if (password) { data.password = password; data.passwordConfirm = password; }
-        await pb.collection('users').update(editing.id, data);
-      } else {
-        await pb.send('/api/daycare-admins', { method: 'POST', body: { display_name: name.trim(), email: email.trim(), password, daycare: schoolId } });
-      }
+      await pb.send('/api/daycare-admins', { method: 'POST', body: { ...(editing ? {id: editing.id} : {}), display_name: name.trim(), email: email.trim(), password, daycare: schoolId, active } });
       reset(); await refresh(); setNotice(editing ? 'School admin updated.' : 'School admin created.');
     } catch (err) { error(message(err)); } finally { setSaving(false); }
   }
