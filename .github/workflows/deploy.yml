@@ -28,6 +28,8 @@ jobs:
         env:
           SG_KEY: ${{ secrets.SITEGROUND_SSH_KEY }}
           PH_KEY: ${{ secrets.POCKETHOST_SSH_KEY }}
+          SG_PASSPHRASE: ${{ secrets.SITEGROUND_SSH_PASSPHRASE }}
+          PH_PASSPHRASE: ${{ secrets.POCKETHOST_SSH_PASSPHRASE }}
           HOST_KEYS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
@@ -36,6 +38,17 @@ jobs:
           printf '%s\n' "$PH_KEY" > ~/.ssh/pockethost
           printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/*
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          cat > "$RUNNER_TEMP/ssh-askpass" <<'SH'
+          #!/bin/sh
+          printf '%s\n' "$KEY_PASSPHRASE"
+          SH
+          chmod 700 "$RUNNER_TEMP/ssh-askpass"
+          export SSH_ASKPASS="$RUNNER_TEMP/ssh-askpass" SSH_ASKPASS_REQUIRE=force DISPLAY=:0
+          KEY_PASSPHRASE="$SG_PASSPHRASE" ssh-add ~/.ssh/siteground < /dev/null
+          KEY_PASSPHRASE="$PH_PASSPHRASE" ssh-add ~/.ssh/pockethost < /dev/null
+          rm "$RUNNER_TEMP/ssh-askpass"
       - name: Upload backend code
         env:
           PH_USER: ${{ secrets.POCKETHOST_USER }}
