@@ -41,7 +41,9 @@ function schoolMenuUrl(slug: string) {
 }
 
 function schoolSlugForPage(params: URLSearchParams) {
-  const requested = params.get('school');
+  const hostedSchool = schoolSlugBySubdomain[window.location.hostname.toLowerCase().split('.')[0]];
+  if (hostedSchool) return hostedSchool;
+  const requested = isLocalHost() ? params.get('school') : null;
   if (requested && schoolNameBySlug[requested]) return requested;
   return schoolSlugBySubdomain[window.location.hostname.toLowerCase().split('.')[0]] || '';
 }
@@ -51,7 +53,9 @@ function App() {
   const schoolSlug = schoolSlugForPage(params);
   const isSuperAdminDomain = window.location.hostname.toLowerCase().split('.')[0] === 'preschool';
   const publicSlug = params.get('menu');
-  if (publicSlug) return <SchoolSelection />;
+  if (schoolSlug) return params.get('admin') === '1' ? <AdminApp schoolSlug={schoolSlug} /> : <PublicMenu slug={schoolSlug} schoolHome />;
+  if (isSuperAdminDomain) return <AdminApp superAdminOnly />;
+  if (publicSlug) return <PublicMenu slug={publicSlug} />;
   if (params.get('parents') === '1') return <SchoolSelection />;
   if (params.get('admin') === '1' || isSuperAdminDomain) return <AdminApp superAdminOnly={isSuperAdminDomain} />;
   return <LandingPage schoolSlug={schoolSlug} />;
@@ -97,8 +101,9 @@ function SchoolSelection() {
   </main>;
 }
 
-function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
+function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?: boolean; schoolSlug?: string }) {
   const [user, setUser] = useState<User | null>((pb.authStore.model as User | null) || null);
+  const [schoolAccess, setSchoolAccess] = useState<{account: string; allowed: boolean; message: string; url?: string} | null>(null);
   const [authReady, setAuthReady] = useState(!pb.authStore.isValid);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -163,7 +168,23 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
     } catch (e) { if (version === loadVersion.current && pb.authStore.model?.id === accountId) setError(message(e)); }
     finally { if (version === loadVersion.current) setBusy(false); }
   }
-  useEffect(() => { if (authReady && user && (!superAdminOnly || user.role === 'clc_admin')) void load(); }, [authReady, user?.id, user?.role, user?.daycare]);
+  useEffect(() => {
+    let active = true;
+    setSchoolAccess(null);
+    if (!authReady || !user || (superAdminOnly && user.role !== 'clc_admin')) return;
+    if (!schoolSlug) { void load(); return; }
+    if (user.role !== 'daycare_admin' || !user.daycare) {
+      setSchoolAccess({account: user.id, allowed: false, message: 'This sign-in is for this school’s assigned admin account.'});
+      return;
+    }
+    void pb.collection('daycares').getOne<Daycare>(user.daycare, {requestKey: null}).then(school => {
+      if (!active) return;
+      const allowed = school.public_slug === schoolSlug;
+      setSchoolAccess({account: user.id, allowed, message: allowed ? '' : `Your account belongs to ${school.name}. Please use your school’s admin sign-in.`, url: schoolSubdomainBySlug[school.public_slug] ? `https://${schoolSubdomainBySlug[school.public_slug]}.cliffslunchclub.com/?admin=1` : undefined});
+      if (allowed) void load();
+    }).catch(() => { if (active) setSchoolAccess({account: user.id, allowed: false, message: 'Unable to verify your school access. Please sign out and try again.'}); });
+    return () => { active = false; loadVersion.current++; };
+  }, [authReady, user?.id, user?.role, user?.daycare, schoolSlug]);
   useEffect(() => () => { loadVersion.current++; }, []);
 
   async function signIn(e: FormEvent) {
@@ -186,6 +207,7 @@ function AdminApp({ superAdminOnly = false }: { superAdminOnly?: boolean }) {
   const showStudentTab = operationsAvailable || substitutionsAvailable;
   useEffect(() => { if (!isClc && current && tab === 'students' && !showStudentTab) setTab('menu'); }, [isClc, current?.id, showStudentTab, tab]);
 
+  if (authReady && user && schoolSlug && (schoolAccess?.account !== user.id || !schoolAccess.allowed)) return <main className="login-page"><div className="login-card"><h1>{schoolAccess?.account === user.id ? 'School access restricted' : 'Checking school access…'}</h1>{schoolAccess?.account === user.id && <><p>{schoolAccess.message}</p>{schoolAccess.url && <a className="back-link" href={schoolAccess.url}>Open your school’s admin sign-in →</a>}<button className="outline" onClick={signOut}>Sign out</button><a className="back-link" href="/">View this school’s menu</a></>}</div></main>;
   if (superAdminOnly && user && !isClc) return <main className="login-page"><div className="login-card"><div className="eyebrow">CLC SUPER ADMIN</div><h1>CLC admin access only</h1><p>This domain is reserved for CLC super admins.</p><button className="outline" onClick={signOut}>Sign out</button></div></main>;
   if (!authReady) return <main className="login-page"><div className="loading">Checking sign-in…</div></main>;
 
@@ -545,7 +567,7 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
   </section>;
 }
 
-function PublicMenu({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
+function PublicMenu({ slug, embedded = false, schoolHome = false }: { slug: string; embedded?: boolean; schoolHome?: boolean }) {
   const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState(schoolNameBySlug[slug] || 'Cliffs Lunch Club'); const [error, setError] = useState('');
   const [requestedMonth, setRequestedMonth] = useState(''); const [now, setNow] = useState(new Date()); const [loading, setLoading] = useState(true);
   const months = publishedMenuMonths(rows, now);
@@ -562,7 +584,7 @@ function PublicMenu({ slug, embedded = false }: { slug: string; embedded?: boole
   const pdf = useMemo(() => menuPdf(title, month, (date) => rows.find((row) => dateOnly(row.service_date) === date) || { menu: 'Menu will be posted soon' }), [title, month, rows]);
   const [pdfUrl, setPdfUrl] = useState('');
   useEffect(() => { const url = URL.createObjectURL(pdf); setPdfUrl(url); return () => URL.revokeObjectURL(url); }, [pdf]);
-  return <main className={embedded ? 'school-menu-page' : 'public-page'}>{!embedded && <a className="back-link" href="/">← Back to home</a>}<header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<select value={months.length ? month : ''} disabled={loading || !months.length} onChange={(event) => setRequestedMonth(event.target.value)}>{!months.length && <option value="">No published months</option>}{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label><button className="outline" disabled={loading || !months.length} onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button><button className="outline" disabled={loading || !months.length} onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button><button className="primary" disabled={loading || !months.length} onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>{error ? <div className="notice error">Menu not available.</div> : loading ? <p className="muted">Loading menu…</p> : !months.length ? <div className="panel empty-state"><p>The menu will appear once the full month is published.</p></div> : pdfUrl && <div className="menu-pdf-frame"><object className="menu-pdf" data={pdfUrl} type="application/pdf" aria-label={`${monthLabel(month)} lunch menu PDF`}><p>Your browser can’t display this PDF. <a href={pdfUrl} download={`${title}-${month}-menu.pdf`}>Download the menu PDF</a></p></object></div>}</main>;
+  return <main className={embedded ? 'school-menu-page' : 'public-page'}>{schoolHome && <a className="back-link" href="/?admin=1">School Admin Sign In →</a>}{!embedded && !schoolHome && <a className="back-link" href="/">← Back to home</a>}<header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<select value={months.length ? month : ''} disabled={loading || !months.length} onChange={(event) => setRequestedMonth(event.target.value)}>{!months.length && <option value="">No published months</option>}{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label><button className="outline" disabled={loading || !months.length} onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button><button className="outline" disabled={loading || !months.length} onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button><button className="primary" disabled={loading || !months.length} onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>{error ? <div className="notice error">Menu not available.</div> : loading ? <p className="muted">Loading menu…</p> : !months.length ? <div className="panel empty-state"><p>The menu will appear once the full month is published.</p></div> : pdfUrl && <div className="menu-pdf-frame"><object className="menu-pdf" data={pdfUrl} type="application/pdf" aria-label={`${monthLabel(month)} lunch menu PDF`}><p>Your browser can’t display this PDF. <a href={pdfUrl} download={`${title}-${month}-menu.pdf`}>Download the menu PDF</a></p></object></div>}</main>;
 }
 
 function publicMenuHtml(title: string, month: string, rows: MenuDay[]) {
