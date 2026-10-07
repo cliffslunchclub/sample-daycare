@@ -212,3 +212,9 @@
   .invoice-page .breakdown-recalculate:hover { background:#d8e6da; border-color:#5b8067; }
   .invoice-page .breakdown-recalculate:focus-visible { outline:2px solid #5b8067; outline-offset:2px; }
 }
+
+.audit-filters { align-items: end; gap: 16px; flex-wrap: wrap; }
+.audit-filters label { min-width: 150px; flex: 1; }
+.audit-details { margin-top: 8px; max-width: 650px; }
+.audit-details summary { cursor: pointer; color: #354f3d; font-weight: 600; }
+.audit-details pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: .85rem; max-width: 260px; }

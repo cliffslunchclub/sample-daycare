@@ -1,3 +1,4 @@
+import { AuditLog } from './AuditLog';
 import { rosterRows, rosterCsv, rosterHtml, rosterExcel } from './rosterExport';
 import { PageTitle } from './PageTitle';
 import { DateField } from './DateFields';
@@ -15,7 +16,7 @@ type Student = Row & { id: string; name: string; classroom: string; daycare: str
 type User = Row & { id: string; role: 'clc_admin' | 'daycare_admin'; daycare: string; display_name: string };
 type MenuDay = Row & { id: string; daycare: string; public_slug: string; service_date: string; menu: string; note: string; closed: boolean; published: boolean; pizza_count: number };
 type MenuItem = Row & { id: string; name: string; active: boolean };
-type Tab = 'overview' | 'summary' | 'students' | 'menu' | 'items' | 'users' | 'locations' | 'invoices';
+type Tab = 'audit' | 'overview' | 'summary' | 'students' | 'menu' | 'items' | 'users' | 'locations' | 'invoices';
 
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const dateOnly = (value: string) => String(value || '').slice(0, 10);
@@ -251,7 +252,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
   const selectableDaycare = selected === 'all' ? null : current;
   const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
   if (!isClc) nav.push(['menu', 'Menu']);
-  nav.push(['invoices', 'Invoices']);
+  nav.push(['invoices', 'Invoices'], ['audit', 'Audit Log']);
   if (isClc) { nav.unshift(['summary', 'Weekly Summary']); nav.push(['menu', 'Monthly Menus'], ['overview', 'Menu Overview'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'School Settings']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
@@ -271,6 +272,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
     <main className="content">
       {error && <div className="notice error">{error}<button className="quiet" onClick={() => setError('')}>Dismiss</button></div>}
       {busy && <div className="loading workspace-loading" role="status">Refreshing…</div>}
+      {tab === 'audit' && <AuditLog schools={daycares} selected={selected} isClc={isClc} />}
       {tab === 'students' && showStudentTab && <section className="page-stack">{(operationsAvailable || substitutionsAvailable) && <SchoolStudentsPage subs={subs} current={selectableDaycare} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />}{current?.allow_substitutions && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
           {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode, pizza_substitution: false } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
             <select value={subStudent} required onChange={(e) => setSubStudent(e.target.value)}><option value="">Student</option>{locStudents.filter((s) => s.active && s.daycare === current.id).map((s) => <option key={s.id} value={s.id}>{shortStudentName(s.name)}</option>)}</select>

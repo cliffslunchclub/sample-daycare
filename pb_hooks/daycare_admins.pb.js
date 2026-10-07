@@ -36,7 +36,7 @@ routerAdd("POST", "/api/daycare-admins", (e) => {
     record.set("daycare", daycareId)
     record.set("display_name", name)
     record.set("active", accountId ? body.active !== false : true)
-    $app.save(record)
+    require(__hooks+'/audit-lib.js').save($app,record,e.auth,{credentialsChanged:Boolean(password)})
     return e.json(accountId ? 200 : 201, { id: record.id, message: accountId ? "School admin updated." : "School admin created." })
   } catch (err) {
     return e.json(400, { message: "Could not save the account. Check the email, school, and password (at least 12 characters)." })
@@ -79,7 +79,7 @@ routerAdd("POST", "/api/substitutions", (e) => {
     record.set("pizza_substitution", weekday === "Friday" && body.pizza_substitution === true)
     record.set("code", code)
     record.set("note", String(body.note || "").trim())
-    $app.save(record)
+    require(__hooks+'/audit-lib.js').save($app,record,e.auth)
     return e.json(201, { id: record.id })
   } catch (err) {
     return e.json(400, { message: "Could not save substitution." })
@@ -103,7 +103,7 @@ routerAdd("POST", "/api/move-students", (e) => {
       if (classroom.getString("daycare") !== schoolId || !classroom.getBool("active")) throw new Error("Choose an active classroom in this school.")
       const students = ids.map((id) => tx.findRecordById("students", id))
       for (const student of students) if (student.getString("daycare") !== schoolId) throw new Error("Every selected student must belong to this school.")
-      for (const student of students) { student.set("classroom", classroomId); student.set("billing_effective_date", require(__hooks+"/billing-lib.js").nyDate()); tx.save(student) }
+      for (const student of students) { student.set("classroom", classroomId); student.set("billing_effective_date", require(__hooks+"/billing-lib.js").nyDate()); require(__hooks+'/audit-lib.js').save(tx,student,e.auth) }
     })
     return e.json(200, { moved: ids.length })
   } catch (_) { return e.json(400, { message: "No students were moved. Check that all students and the destination classroom belong to this school and roster access is enabled." }) }
@@ -125,8 +125,8 @@ routerAdd("POST", "/api/delete-students", (e) => {
       for (const student of students) if (student.getString("daycare") !== schoolId) throw new Error("Every selected student must belong to this school.")
       for (const student of students) {
         const substitutions = tx.findRecordsByFilter("substitutions", "student = {:student}", "", 0, 0, { student: student.id })
-        for (const substitution of substitutions) tx.delete(substitution)
-        tx.delete(student)
+        for (const substitution of substitutions) require(__hooks+'/audit-lib.js').remove(tx,substitution,e.auth)
+        require(__hooks+'/audit-lib.js').remove(tx,student,e.auth)
       }
     })
     return e.json(200, { deleted: ids.length })
@@ -154,7 +154,7 @@ routerAdd("POST", "/api/clone-menu", (e) => {
         const date = row.getString("service_date")
         const matches = existing.filter((item) => item.getString("service_date").slice(0, 10) === date.slice(0, 10))
         const record = matches[0] || new Record(tx.findCollectionByNameOrId("menu_days"))
-        for (const duplicate of matches.slice(1)) tx.delete(duplicate)
+        for (const duplicate of matches.slice(1)) require(__hooks+'/audit-lib.js').remove(tx,duplicate,e.auth)
         const noService = target.getString("public_slug") === "tle-englewood-cliffs" && new Date(date.slice(0, 10) + "T12:00:00Z").getUTCDay() === 5 && !Number(JSON.parse(target.getString("baseline_counts") || "{}").Friday || 0)
         record.set("daycare", targetId)
         record.set("daycare_name", target.getString("name"))
@@ -166,7 +166,7 @@ routerAdd("POST", "/api/clone-menu", (e) => {
         record.set("note", noService ? "No service" : row.getString("note"))
         record.set("closed", noService || row.getBool("closed"))
         record.set("published", false)
-        tx.save(record)
+        require(__hooks+'/audit-lib.js').save(tx,record,e.auth)
         copied++
       }
     })
