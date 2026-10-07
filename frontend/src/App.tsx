@@ -270,7 +270,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
     <main className="content">
       {error && <div className="notice error">{error}<button className="quiet" onClick={() => setError('')}>Dismiss</button></div>}
       {busy && <div className="loading workspace-loading" role="status">Refreshing…</div>}
-      {tab === 'students' && showStudentTab && <section className="page-stack">{(operationsAvailable || substitutionsAvailable) && <SchoolStudentsPage current={selectableDaycare} daycares={daycares} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />}{current?.allow_substitutions && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
+      {tab === 'students' && showStudentTab && <section className="page-stack">{(operationsAvailable || substitutionsAvailable) && <SchoolStudentsPage current={selectableDaycare} isClc={isClc} students={students} classrooms={classrooms} onRefresh={load} error={setError} />}{current?.allow_substitutions && <div className="panel sub-panel"><div><h3>Record a substitution</h3><p className="muted">{current.allow_substitutions ? 'Choose a student, day, and option.' : 'Substitutions are turned off for this daycare.'}</p></div>
           {current.allow_substitutions && <form className="inline-form" onSubmit={async (e) => { e.preventDefault(); try { await pb.send('/api/substitutions', { method: 'POST', body: { student: subStudent, daycare: current.id, service_date: subDate, code: subCode, pizza_substitution: false } }); setSubStudent(''); await load(); } catch (err) { setError(message(err)); } }}>
             <select value={subStudent} required onChange={(e) => setSubStudent(e.target.value)}><option value="">Student</option>{locStudents.filter((s) => s.active && s.daycare === current.id).map((s) => <option key={s.id} value={s.id}>{shortStudentName(s.name)}</option>)}</select>
             <select value={subDate} required onChange={(e) => setSubDate(e.target.value)}><option value="">Weekday</option>{dates.map((d) => <option key={d} value={d}>{dayName(d)}</option>)}</select>
@@ -294,13 +294,13 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
 }
 
 
-function SchoolStudentsPage({ current, daycares, isClc, students, classrooms, onRefresh, error }: { current: Daycare | null; daycares: Daycare[]; isClc: boolean; students: Student[]; classrooms: Row[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
-  const [schoolId, setSchoolId] = useState(daycares[0]?.id || '');
-  const school = current || daycares.find((d) => d.id === schoolId) || daycares[0];
-  return <section className="page-stack">{school && <PageTitle title="Students & Classrooms" subtitle={`Manage ${school.name}’s roster and recurring weekly service days.`} />}{!current && <div className="toolbar"><label>School<select value={school?.id || ''} onChange={(e) => setSchoolId(e.target.value)}>{daycares.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label></div>}
+function SchoolStudentsPage({ current, isClc, students, classrooms, onRefresh, error }: { current: Daycare | null; isClc: boolean; students: Student[]; classrooms: Row[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
+  const school = current;
+  return <section className="page-stack"><PageTitle title="Students & Classrooms" subtitle={school ? `Manage ${school.name}’s roster and recurring weekly service days.` : 'Select a school in the top-right selector to manage its roster, lunch requests, and substitutions.'} />
+    {!school && <Empty title="Select a School" text="Use the school selector at the top right to choose a school." />}
     {school && <NotesRequests key={school.id} school={school} isClc={isClc} students={students} classrooms={classrooms} />}
     {school && isClc && <CountSettings key={`${school.id}:${school.count_mode}:${JSON.stringify(school.baseline_counts)}:${JSON.stringify(school.baseline_pizza_counts)}:${JSON.stringify(school.clc_managed_counts)}`} school={school} onRefresh={onRefresh} error={error} />}
-    {school && (isClc || school.operations_enabled) && (school.count_mode === 'manual' ? <div className="panel empty-state"><h2>{school.name}</h2><p>Counts use the saved weekday totals. CLC can switch this school to students and classrooms above.</p></div> : <StudentsPage current={school || null} students={students.filter((s) => s.daycare === school?.id)} classrooms={classrooms.filter((c) => c.daycare === school?.id)} onRefresh={onRefresh} error={error} />)}
+    {school && (isClc || school.operations_enabled) && (school.count_mode === 'manual' ? <div className="panel empty-state"><h2>{school.name}</h2><p>Counts use the saved weekday totals. CLC can switch this school to students and classrooms above.</p></div> : <StudentsPage key={school.id} current={school || null} students={students.filter((s) => s.daycare === school?.id)} classrooms={classrooms.filter((c) => c.daycare === school?.id)} onRefresh={onRefresh} error={error} />)}
   </section>;
 }
 
