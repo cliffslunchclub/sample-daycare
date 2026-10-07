@@ -198,3 +198,6 @@
 .overview-calendar .overview-meal-content { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:16px 12px; gap:8px; }
 .overview-calendar .overview-meal-content .web-menu-note,
 .overview-calendar .overview-meal-content .overview-draft { margin:0; }
+
+.roster-search label { width:min(100%,360px); }
+.roster-search input { width:100%; }
