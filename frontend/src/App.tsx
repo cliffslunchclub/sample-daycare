@@ -421,7 +421,7 @@ function MenuOverview({ daycares, menuDays, month, setMonth }: { daycares: Dayca
     {!schools.length && <p className="muted">Select at least one school to create an overview.</p>}
     {schools.map(school => <section className="panel overview-calendar" key={school.id}><h2>{school.name}</h2><p className="muted small">{monthLabel(month)}</p><div className="web-menu-weekdays">{weekdays.map(day => <div key={day}>{day}</div>)}</div><div className="web-menu-days">{monthDates(month).map(date => {
       const inside = date.startsWith(month), saved = inside ? savedFor(school, date) : undefined;
-      return <article key={date} className={`web-menu-day ${!inside ? 'web-menu-outside' : saved?.closed ? 'web-menu-closed' : ''}`}><div className="web-menu-date">{shortDate(date)} <span>{dayName(date)}</span></div>{inside && <><div className="overview-meal">{saved ? saved.closed ? <strong>No Lunch Service</strong> : saved.menu || 'No menu selected' : 'Not saved'}</div>{saved?.note && <p className="web-menu-note">{saved.note}</p>}{saved && !saved.published && <span className="overview-draft">Draft</span>}</>}</article>;
+      return <article key={date} className={`web-menu-day ${!inside ? 'web-menu-outside' : saved?.closed ? 'web-menu-closed' : ''}`}><div className="web-menu-date">{shortDate(date)}</div>{inside && <div className="overview-meal-content"><div className="overview-meal">{saved ? saved.closed ? <strong>No Lunch Service</strong> : saved.menu || 'No menu selected' : 'Not saved'}</div>{saved?.note && <p className="web-menu-note">{saved.note}</p>}{saved && !saved.published && <span className="overview-draft">Draft</span>}</div>}</article>;
     })}</div></section>)}
   </section>;
 }
