@@ -594,7 +594,7 @@ function PublicMenu({ slug, embedded = false }: { slug: string; embedded?: boole
     return () => { active = false; };
   }, [slug]);
   return <main className={embedded ? 'school-menu-page' : 'public-page'}>{!embedded && <a className="back-link" href="/">← Back to home</a>}
-    <header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header>
+    <header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} Lunch Menu</p></div></header>
     <div className="public-toolbar"><label>Month<select value={months.length ? month : ''} disabled={loading || !months.length} onChange={event => setRequestedMonth(event.target.value)}>{!months.length && <option value="">No published months</option>}{months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label>
       <button className="outline" disabled={loading || !months.length} onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button>
       <button className="outline" disabled={loading || !months.length} onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button>
