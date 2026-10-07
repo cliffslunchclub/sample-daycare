@@ -173,3 +173,23 @@
 .overview-calendar > p { margin: 0 0 16px; }
 .overview-meal { white-space: pre-line; }
 .overview-draft { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600; color: #795c20; background: #faf1da; border-radius: 4px; padding: 2px 6px; }
+
+/* Admin typography and section rhythm, shared by both account roles. */
+@media screen {
+  .content h1 { font-size:clamp(1.8rem,3vw,2.45rem); line-height:1.15; }
+  .content h2 { font-size:1.25rem; line-height:1.3; }
+  .content h3 { font-size:1rem; line-height:1.35; }
+  .content p { line-height:1.5; }
+  .content .page-title { gap:var(--space-2); }
+  .content .panel > h2:first-child,
+  .content .panel > h3:first-child { margin-top:0; }
+  .content .panel .section-heading h2 { margin:0; }
+  .content .school-menu-page .public-toolbar { margin:0; }
+  .content .school-menu-page .web-menu,
+  .content .school-menu-page .substitution-notice { margin:0; }
+  .content .public-sub-options { margin:var(--space-3) 0 0; gap:var(--space-3); }
+  .content .overview-calendar > p { margin-bottom:var(--space-3); }
+  .content .overview-calendar h2 { margin-bottom:var(--space-2); }
+  .content .empty-message { margin:0; padding:var(--space-3) 0 0; }
+  .content .panel-stack > .empty-message { padding:0; }
+}
