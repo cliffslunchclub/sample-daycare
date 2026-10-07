@@ -149,3 +149,18 @@
   .invoice-page .breakdown-heading h3 { margin:0; }
   .invoice-page .breakdown-recalculate { font-size:.75rem; font-weight:600; padding:.25rem .45rem; min-height:0; color:var(--muted); }
 }
+
+.web-menu{background:#fff;border:1px solid #d9e0da;border-radius:14px;overflow:hidden;margin-top:24px;font-family:Arial,sans-serif}
+.web-menu-weekdays,.web-menu-days{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
+.web-menu-weekdays{background:#e7eee8;color:#35443a;text-align:center}
+.web-menu-weekdays b{padding:14px 8px}
+.web-menu-day{border-top:1px solid #d9e0da;border-right:1px solid #d9e0da;min-height:150px;text-align:center;overflow-wrap:anywhere}
+.web-menu-day:nth-child(5n){border-right:0}
+.web-menu-date{font-weight:700;padding:10px 6px;border-bottom:1px solid #d9e0da;font-size:13px}
+.web-menu-meal{padding:18px 12px;white-space:pre-line;font-size:14px;line-height:1.5}
+.web-menu-note{font-size:12px;color:#64716c;margin:10px 0 0}
+.outside-month,.no-service{background:#f0f1f0}.outside-month{color:#7b847e}
+.web-menu-footer{margin:0;padding:14px 18px;border-top:1px solid #d9e0da;color:#64716c;font-size:12px}
+.web-menu-mobile-day{display:none}.substitution-notice{margin-top:24px}.substitution-notice p{line-height:1.6}
+.public-sub-options{display:grid;gap:12px;margin:20px 0 0}.public-sub-options>div{display:flex;gap:12px}.public-sub-options dt{font-weight:700;min-width:24px}.public-sub-options dd{margin:0;white-space:pre-line}
+@media(max-width:640px){.web-menu-weekdays{display:none}.web-menu-days{grid-template-columns:1fr}.web-menu-day{border-right:0;min-height:0;text-align:left}.web-menu-date{padding:12px 16px}.web-menu-meal{padding:16px}.outside-month{display:none}.web-menu-mobile-day{display:inline}.public-toolbar{flex-wrap:wrap}}

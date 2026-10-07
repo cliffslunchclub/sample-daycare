@@ -53,7 +53,11 @@ function App() {
   const schoolSlug = schoolSlugForPage(params);
   const isSuperAdminDomain = window.location.hostname.toLowerCase().split('.')[0] === 'preschool';
   const publicSlug = params.get('menu');
-  if (schoolSlug) return params.get('admin') === '1' ? <AdminApp schoolSlug={schoolSlug} /> : <PublicMenu slug={schoolSlug} schoolHome />;
+  if (schoolSlug) {
+    if (params.get('admin') === '1') return <AdminApp schoolSlug={schoolSlug} />;
+    if (params.get('parents') === '1' || params.has('menu')) return <PublicMenu slug={schoolSlug} />;
+    return <LandingPage schoolSlug={schoolSlug} />;
+  }
   if (isSuperAdminDomain) return <AdminApp superAdminOnly />;
   if (publicSlug) return <PublicMenu slug={publicSlug} />;
   if (params.get('parents') === '1') return <SchoolSelection />;
@@ -65,13 +69,13 @@ function LandingPage({ schoolSlug }: { schoolSlug: string }) {
   const schoolName = schoolNameBySlug[schoolSlug];
   const superAdminUrl = isLocalHost() ? '/?admin=1' : 'https://preschool.cliffslunchclub.com/';
   return <main className="landing-page">
-    <header className="landing-brand"><div><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></div><a className="super-admin-link" href={superAdminUrl}>CLC LOGIN</a></header>
+    <header className="landing-brand"><div><b>Cliffs Lunch Club</b><span>{schoolName || 'School meals, made simple.'}</span></div>{!schoolSlug && <a className="super-admin-link" href={superAdminUrl}>CLC LOGIN</a>}</header>
     <section className="landing-content">
       <h1><strong>Welcome to Cliffs Lunch Club</strong></h1>
       <p>Choose how you’d like to continue.</p>
       <div className="landing-choices">
-        <a className="landing-choice" href="/?parents=1"><span className="choice-kicker">FOR PARENTS</span><h2>View the Lunch Menu</h2><p>{schoolName ? `Open the latest menu for ${schoolName}.` : 'Choose your school to see its latest lunch menu.'}</p><b>Find your school <span aria-hidden="true">→</span></b></a>
-        <a className="landing-choice admin-choice" href="/?admin=1"><span className="choice-kicker">FOR SCHOOL STAFF</span><h2>School Admin Sign In</h2><p>Sign in to manage your school’s lunch operations.</p><b>Admin sign in <span aria-hidden="true">→</span></b></a>
+        <a className="landing-choice" href="/?parents=1"><span className="choice-kicker">FOR PARENTS</span><h2>View Lunch Menu</h2><p>{schoolName ? `Open the latest menu for ${schoolName}.` : 'Choose your school to see its latest lunch menu.'}</p><b>{schoolName ? 'View lunch menu' : 'Find your school'} <span aria-hidden="true">→</span></b></a>
+        <a className="landing-choice admin-choice" href="/?admin=1"><span className="choice-kicker">FOR SCHOOL STAFF</span><h2>School Admin Sign In</h2><p>{schoolName ? `Sign in to manage lunch operations for ${schoolName}.` : 'Sign in to manage your school’s lunch operations.'}</p><b>Admin sign in <span aria-hidden="true">→</span></b></a>
       </div>
     </section>
     <footer>Cliffs Lunch Club</footer>
@@ -567,7 +571,7 @@ function LocationsPage({ daycares, onCreate, onAddAdmin, onSave, onRefresh }: { 
   </section>;
 }
 
-function PublicMenu({ slug, embedded = false, schoolHome = false }: { slug: string; embedded?: boolean; schoolHome?: boolean }) {
+function PublicMenu({ slug, embedded = false }: { slug: string; embedded?: boolean }) {
   const [rows, setRows] = useState<MenuDay[]>([]); const [title, setTitle] = useState(schoolNameBySlug[slug] || 'Cliffs Lunch Club'); const [error, setError] = useState('');
   const [requestedMonth, setRequestedMonth] = useState(''); const [now, setNow] = useState(new Date()); const [loading, setLoading] = useState(true);
   const months = publishedMenuMonths(rows, now);
@@ -582,9 +586,40 @@ function PublicMenu({ slug, embedded = false, schoolHome = false }: { slug: stri
     return () => { mounted = false; };
   }, [slug]);
   const pdf = useMemo(() => menuPdf(title, month, (date) => rows.find((row) => dateOnly(row.service_date) === date) || { menu: 'Menu will be posted soon' }), [title, month, rows]);
-  const [pdfUrl, setPdfUrl] = useState('');
-  useEffect(() => { const url = URL.createObjectURL(pdf); setPdfUrl(url); return () => URL.revokeObjectURL(url); }, [pdf]);
-  return <main className={embedded ? 'school-menu-page' : 'public-page'}>{schoolHome && <a className="back-link" href="/?admin=1">School Admin Sign In →</a>}{!embedded && !schoolHome && <a className="back-link" href="/">← Back to home</a>}<header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header><div className="public-toolbar"><label>Month<select value={months.length ? month : ''} disabled={loading || !months.length} onChange={(event) => setRequestedMonth(event.target.value)}>{!months.length && <option value="">No published months</option>}{months.map((value) => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label><button className="outline" disabled={loading || !months.length} onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button><button className="outline" disabled={loading || !months.length} onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button><button className="primary" disabled={loading || !months.length} onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>{error ? <div className="notice error">Menu not available.</div> : loading ? <p className="muted">Loading menu…</p> : !months.length ? <div className="panel empty-state"><p>The menu will appear once the full month is published.</p></div> : pdfUrl && <div className="menu-pdf-frame"><object className="menu-pdf" data={pdfUrl} type="application/pdf" aria-label={`${monthLabel(month)} lunch menu PDF`}><p>Your browser can’t display this PDF. <a href={pdfUrl} download={`${title}-${month}-menu.pdf`}>Download the menu PDF</a></p></object></div>}</main>;
+  const [subOptions, setSubOptions] = useState<Record<string, string> | null>(null);
+  const [subError, setSubError] = useState(false);
+  useEffect(() => {
+    if (slug !== 'lightbridge-bergenfield') return;
+    let active = true;
+    void pb.send<Row[]>('/api/public-schools', {method: 'GET', requestKey: null}).then(schools => {
+      if (!active) return;
+      const school = schools.find(s => s.public_slug === slug);
+      if (!school?.substitution_options) { setSubError(true); return; }
+      setSubOptions(school.substitution_options);
+    }).catch(() => { if (active) setSubError(true); });
+    return () => { active = false; };
+  }, [slug]);
+  return <main className={embedded ? 'school-menu-page' : 'public-page'}>{!embedded && <a className="back-link" href="/">← Back to home</a>}
+    <header className="public-header"><div><div className="eyebrow">CLIFFS LUNCH CLUB</div><h1>{title}</h1><p>{monthLabel(month)} lunch menu</p></div></header>
+    <div className="public-toolbar"><label>Month<select value={months.length ? month : ''} disabled={loading || !months.length} onChange={event => setRequestedMonth(event.target.value)}>{!months.length && <option value="">No published months</option>}{months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label>
+      <button className="outline" disabled={loading || !months.length} onClick={() => printMenuHtml(publicMenuHtml(title, month, rows))}>Print / Save PDF</button>
+      <button className="outline" disabled={loading || !months.length} onClick={() => download(pdf, `${title}-${month}-menu.pdf`)}>Download PDF</button>
+      <button className="primary" disabled={loading || !months.length} onClick={() => exportPublicWord(title, month, rows)}>Download Word</button></div>
+    {error ? <div className="notice error">Menu not available.</div> : loading ? <p className="muted">Loading menu…</p> : !months.length ? <div className="panel empty-state"><p>The menu will appear once the full month is published.</p></div> : <section className="web-menu" aria-label={`${monthLabel(month)} lunch menu`}>
+      <div className="web-menu-weekdays" aria-hidden="true">{weekdays.map(day => <b key={day}>{day}</b>)}</div>
+      <div className="web-menu-days">{monthDates(month).map(date => {
+        const inside = date.startsWith(month), meal = rows.find(row => dateOnly(row.service_date) === date);
+        return <article key={date} className={`web-menu-day${!inside ? ' outside-month' : meal?.closed ? ' no-service' : ''}`}>
+          <div className="web-menu-date"><span className="web-menu-mobile-day">{dayName(date)} · </span>{invoiceDate(date)}</div>
+          {inside && <div className="web-menu-meal">{meal?.closed ? <strong>No Lunch Service</strong> : meal?.menu || 'Menu will be posted soon'}{meal?.note && <p className="web-menu-note">{meal.note}</p>}</div>}
+        </article>;
+      })}</div><p className="web-menu-footer">Menus are subject to change.</p></section>}
+    {slug === 'lightbridge-bergenfield' && <section className="panel substitution-notice"><h2>Lunch Substitutions</h2>
+      <p>To request a lunch substitution, send <strong>one email to both substitutions@cliffslunchclub.com and your school administrator</strong>. Put both email addresses in the <strong>To</strong> field so everyone receives the same request.</p>
+      <p>Include your child’s name, classroom, lunch date(s), and requested substitution from the options below. Please include any food allergies or dietary needs.</p>
+      {subOptions ? <dl className="public-sub-options">{['A','B','C','V'].map(code => <div key={code}><dt>{code}</dt><dd>{subOptions[code] || 'Please confirm this option with your school administrator'}</dd></div>)}</dl> : <p className="muted">{subError ? 'Please contact your school administrator for the current substitution options.' : 'Loading substitution options…'}</p>}
+    </section>}
+  </main>;
 }
 
 function publicMenuHtml(title: string, month: string, rows: MenuDay[]) {
