@@ -1,7 +1,8 @@
 module.exports.capture=(app,row,deleted)=>{
   // During migrations the history collection may not exist yet.
   let collection;try{collection=app.findCollectionByNameOrId('schedule_history')}catch(_){return}
-  const school=row.collection().name==='daycares', date=deleted?require(__hooks+'/billing-lib.js').nyDate():(row.getString('billing_effective_date')||require(__hooks+'/billing-lib.js').nyDate())
+  const school=row.collection().name==='daycares', lib=require(__hooks+'/billing-lib.js'), today=lib.nyDate()
+  const date=deleted?lib.addDays(today,1):(row.getString('billing_effective_date')||(school?today:lib.addDays(today,1)))
   if(!require(__hooks+'/billing-lib.js').validDate(date))throw new Error('A valid billing effective date is required.')
   const daycare=school?row.id:row.getString('daycare'),entity=school?'school':row.id
   const snapshot=school?{count_mode:row.getString('count_mode'),baseline_counts:JSON.parse(row.getString('baseline_counts')||'null'),clc_managed_counts:JSON.parse(row.getString('clc_managed_counts')||'null'),invoice_rate:row.getFloat('invoice_rate')}:{name:row.getString('name'),active:!deleted&&row.getBool('active'),service_days:JSON.parse(row.getString('service_days')||'null'),size:row.getString('size')}

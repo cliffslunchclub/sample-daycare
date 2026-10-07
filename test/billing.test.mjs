@@ -45,3 +45,22 @@ test('carry-forward corrections include date and source, reconcile credits and r
  const changed=[...h,{entity:'school',effective_date:'2026-10-19',snapshot:{count_mode:'manual',baseline_counts:{Monday:125},invoice_rate:4}}];
  changed.splice(1,1);corrections=lib.carryForward(school,changed,[],[original,next],'2026-11-09');assert.equal(corrections.length,2);assert.equal(corrections.reduce((n,l)=>n+l.quantity*l.rate,0),62.5);
 });
+
+test('Friday-only additions bill all four remaining October Fridays and honor closures',()=>{
+ const h=[{entity:'school',effective_date:'2026-10-01',snapshot:{count_mode:'roster',invoice_rate:4}},{entity:'martin',effective_date:'2026-10-09',snapshot:{name:'Martin',active:true,service_days:['Friday']}}];
+ const plan=lib.monthlyPlan(school,h,[],'2026-10');
+ assert.equal(plan.lines.find(l=>l.adjustment_type==='schedule').quantity,4);
+ assert.equal(plan.counts.filter(d=>d.quantity).map(d=>d.date).join(','),'2026-10-09,2026-10-16,2026-10-23,2026-10-30');
+ assert.equal(lib.monthlyPlan(school,h,[{service_date:'2026-10-23',closed:true}],'2026-10').lines[0].quantity,3);
+});
+test('next-day additions and removals leave today unchanged and reconcile the invoice',()=>{
+ const days=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+ const h=[{entity:'school',effective_date:'2026-10-01',snapshot:{count_mode:'roster',invoice_rate:4}},{entity:'old',effective_date:'2026-10-01',snapshot:{name:'Old',active:true,service_days:days}},{entity:'old',effective_date:'2026-10-08',snapshot:{name:'Old',active:false,service_days:days}},{entity:'new',effective_date:'2026-10-08',snapshot:{name:'New',active:true,service_days:['Friday']}}];
+ assert.equal(lib.daily(school,h,[],'2026-10-07').quantity,1);
+ assert.equal(lib.daily(school,h,[],'2026-10-08').quantity,0);
+ const plan=lib.monthlyPlan(school,h,[],'2026-10');
+ assert.equal(plan.lines.find(l=>l.quantity<0).quantity,-17);
+ assert.equal(plan.lines.find(l=>l.description.includes('additions')).quantity,4);
+ assert.equal(plan.lines.reduce((sum,l)=>sum+l.quantity,0),plan.counts.reduce((sum,d)=>sum+d.quantity,0));
+ assert.equal(lib.addDays(lib.nyDate(new Date('2026-11-01T05:30:00Z')),1),'2026-11-02');
+});
