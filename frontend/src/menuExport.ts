@@ -43,7 +43,7 @@ export function menuFilename(school: string, month: string) {
   return `${school.replace(/[^a-zA-Z0-9 -]/g, '')} Menu ${label}.docx`;
 }
 
-function zipFiles(files: Record<string, Uint8Array>): Uint8Array {
+export function zipFiles(files: Record<string, Uint8Array>): Uint8Array {
   const encoder = new TextEncoder();
   const chunks: Uint8Array[] = [], directory: Uint8Array[] = [];
   let offset = 0;
