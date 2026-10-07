@@ -16,11 +16,11 @@ test('approved date migration shifts only additions and removals, preserving Oct
  assert.equal(rows.find(r=>r.data.entity==='override').data.snapshot.active,false);
 });
 
-test('Nolan correction moves the active three-to-two-day history without shifting other students',()=>{
+test('Nolan correction moves a reduction even when older history has more than three days',()=>{
  const row=(entity,date,name,days)=>record({daycare:'bf',entity,effective_date:date,snapshot:{name,active:true,service_days:days}});
- const rows=[row('n','2026-10-01','Nolan',['Monday','Wednesday','Friday']),row('n','2026-10-07','Nolan',['Monday','Friday']),row('other','2026-10-01','Other',['Monday','Wednesday','Friday']),row('other','2026-10-07','Other',['Monday','Friday'])];
+ const rows=[row('n','2026-10-01','Nolan',['Monday','Tuesday','Wednesday','Thursday','Friday']),row('n','2026-10-07','Nolan',['Monday','Friday']),row('other','2026-10-01','Other',['Monday','Wednesday','Friday']),row('other','2026-10-07','Other',['Monday','Friday'])];
  const student=record({billing_effective_date:'2026-10-07'});
- let run;vm.runInNewContext(readFileSync(new URL('../pb_migrations/1791405300_nolan_next_day_schedule.js',import.meta.url),'utf8'),{migrate:(up)=>{run=up;}});
+ let run;vm.runInNewContext(readFileSync(new URL('../pb_migrations/1791405600_nolan_schedule_reduction.js',import.meta.url),'utf8'),{migrate:(up)=>{run=up;}});
  const app={findRecordsByFilter(collection,filter,sort,_limit,_offset,params){if(collection==='daycares')return [{id:'bf'}];let found=rows.filter(r=>r.data.daycare===params.school&&(!params.entity||r.data.entity===params.entity));found=found.filter(r=>filter.includes('effective_date <')?r.data.effective_date<params.date:r.data.effective_date===params.date);if(sort)found.sort((a,b)=>b.data.effective_date.localeCompare(a.data.effective_date));return params.entity?found.slice(0,1):found;},findRecordById(){return student;},save(){},delete(r){rows.splice(rows.indexOf(r),1);}};
  run(app);run(app);
  assert.equal(rows.find(r=>r.data.entity==='n'&&r.data.snapshot.service_days.length===2).data.effective_date,'2026-10-08');
