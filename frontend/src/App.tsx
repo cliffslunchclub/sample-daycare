@@ -194,7 +194,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
   async function signIn(e: FormEvent) {
     e.preventDefault(); setError('');
     try {
-      const result = await pb.collection('users').authWithPassword<User>(email, password);
+      const result = await pb.collection('users').authWithPassword<User>(email.trim().toLowerCase(), password);
       setSelected(result.record.role === 'clc_admin' ? 'all' : result.record.daycare);
       setTab(result.record.role === 'clc_admin' ? 'summary' : 'students');
       if (superAdminOnly && result.record.role !== 'clc_admin') {
