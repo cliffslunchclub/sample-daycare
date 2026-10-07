@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { menuExportHtml, menuExportDocx, menuFilename } from '../frontend/src/menuExport.ts';
+import { menuOverviewHtml, menuExportHtml, menuExportDocx, menuFilename } from '../frontend/src/menuExport.ts';
 
 test('menu export aligns dates to weekday columns and escapes menu text', () => {
   const calls = [];
@@ -35,8 +35,20 @@ test('Word download is a native DOCX and includes the selected month in filename
   assert.ok(contents.includes('Pasta &amp; peas'));
   assert.ok(contents.includes('word/header1.xml'));
   assert.ok(contents.includes('w:fill="FFFFFF"'));
-  assert.ok(contents.includes('w:orient="landscape"'));
+  assert.ok(contents.includes('w:orient="portrait"'));
   assert.ok(contents.includes('09-28-2026'));
   assert.ok(contents.includes('<w:jc w:val="center"/>'));
   assert.ok(contents.includes('<w:b/>'));
+});
+
+
+test('internal overview includes only selected schools and distinguishes drafts from missing days', () => {
+  const html = menuOverviewHtml('2026-10', [{ name: 'School <one>', mealFor: date => date === '2026-10-01' ? { menu: 'Pasta & peas', published: false } : date === '2026-10-02' ? { closed: true, published: true } : undefined }]);
+  assert.ok(html.includes('School &lt;one&gt;'));
+  assert.ok(html.includes('Pasta &amp; peas'));
+  assert.ok(html.includes('Draft'));
+  assert.ok(html.includes('Not saved'));
+  assert.ok(html.includes('No Lunch Service'));
+  assert.equal((html.match(/<table>/g) || []).length, 1);
+  assert.ok(html.includes('10-01-2026'));
 });

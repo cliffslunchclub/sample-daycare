@@ -5,7 +5,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { pb } from './api';
 import { InvoicesPage, NotesRequests, DatedKitchenCounts } from './Billing';
 import { menuPdf } from './menuPdf';
-import { menuExportHtml, menuExportDocx, menuFilename, printMenuHtml } from './menuExport';
+import { menuOverviewHtml, menuExportHtml, menuExportDocx, menuFilename, printMenuHtml } from './menuExport';
 import { weekdays, weekdayForDate as dayName, weekDates, monthCalendarWeekdays as monthDates, menuMonthOptions, suggestedMenuForDate, shortStudentName, publishedMenuMonths } from './operations';
 
 type Row = Record<string, any>;
@@ -14,7 +14,7 @@ type Student = Row & { id: string; name: string; classroom: string; daycare: str
 type User = Row & { id: string; role: 'clc_admin' | 'daycare_admin'; daycare: string; display_name: string };
 type MenuDay = Row & { id: string; daycare: string; public_slug: string; service_date: string; menu: string; note: string; closed: boolean; published: boolean; pizza_count: number };
 type MenuItem = Row & { id: string; name: string; active: boolean };
-type Tab = 'summary' | 'students' | 'menu' | 'items' | 'users' | 'locations' | 'invoices';
+type Tab = 'overview' | 'summary' | 'students' | 'menu' | 'items' | 'users' | 'locations' | 'invoices';
 
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const dateOnly = (value: string) => String(value || '').slice(0, 10);
@@ -251,7 +251,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
   const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
   if (!isClc) nav.push(['menu', 'Menu']);
   nav.push(['invoices', 'Invoices']);
-  if (isClc) { nav.unshift(['summary', 'Weekly Summary']); nav.push(['menu', 'Monthly Menus'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
+  if (isClc) { nav.unshift(['summary', 'Weekly Summary']); nav.push(['menu', 'Monthly Menus'], ['overview', 'Menu Overview'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'Daycares']); }
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
@@ -283,6 +283,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
       {tab === 'invoices' && <InvoicesPage key={selected} schools={daycares} isClc={isClc} currentId={selected === 'all' ? '' : selected} />}
       {tab === 'summary' && isClc && <section className="page-stack"><PageTitle title="Weekly Summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print landscape summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /><DatedKitchenCounts schools={daycares.filter((d) => selected === 'all' || d.id === selected)} /></section>}
       {tab === 'menu' && !isClc && current && <PublicMenu slug={current.public_slug} embedded />}
+      {tab === 'overview' && isClc && <MenuOverview daycares={daycares} menuDays={menuDays} month={month} setMonth={setMonth} />}
       {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
       {tab === 'items' && isClc && <MenuItemsPage items={menuItems} onRefresh={load} error={setError} />}
       {tab === 'users' && isClc && <SchoolAdminsPage daycares={daycares} error={setError} />}
@@ -406,6 +407,22 @@ function StudentsPage({ current, students, classrooms, onRefresh, error }: { cur
       {visibleStudents.map((s) => <tr key={s.id}><td><input type="checkbox" aria-label={`Select ${shortStudentName(s.name)}`} disabled={moving} checked={selectedIds.includes(s.id)} onChange={(event) => setSelectedIds(event.target.checked ? [...selectedIds, s.id] : selectedIds.filter((id) => id !== s.id))} /></td><td>{classrooms.find((c) => c.id === s.classroom)?.name || '—'}</td><td><b>{shortStudentName(s.name)}</b></td><td>{current.sizes_enabled ? titleCase(s.size || 'standard') : '—'}</td><td>{s.service_days.join(', ') || 'None'}</td><td className="row-actions"><button className="quiet" onClick={() => edit(s)}>Edit</button><button className="quiet danger-text" onClick={async () => { if (window.confirm(`Delete ${shortStudentName(s.name)}?`)) { try { await pb.collection('students').delete(s.id); await onRefresh(); } catch (e) { error(message(e)); } } }}>Delete</button></td></tr>)}
       {!visibleStudents.length && <tr><td colSpan={6} className="empty-cell">No students match this classroom.</td></tr>}
     </tbody></table></div><div className="bulk-classroom-move"><span>{chosenStudents.length} selected</span><label>Move to Classroom<select value={destination} disabled={moving} onChange={(event) => setDestination(event.target.value)}><option value="">Choose destination</option>{orderedRooms.filter((classroom) => classroom.daycare === current.id && classroom.active).map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}</option>)}</select></label><button className="primary" disabled={moving || !destination || !chosenStudents.some((student) => student.classroom !== destination)} onClick={() => void moveStudents()}>{moving ? 'Saving…' : 'Change Classroom for Selected Students'}</button><button className="danger-button" disabled={moving || !chosenStudents.length} onClick={() => void deleteSelectedStudents()}>{moving ? 'Saving…' : 'Delete Selected Students'}</button></div>{moveNotice && <p role="status">{moveNotice}</p>}</div>
+  </section>;
+}
+
+function MenuOverview({ daycares, menuDays, month, setMonth }: { daycares: Daycare[]; menuDays: MenuDay[]; month: string; setMonth: (month: string) => void }) {
+  const [excluded, setExcluded] = useState<string[]>([]);
+  const schools = daycares.filter(school => !excluded.includes(school.id));
+  const months = [...new Set([...menuMonthOptions(), month, ...menuDays.map(day => dateOnly(day.service_date).slice(0, 7))])].sort();
+  const savedFor = (school: Daycare, date: string) => menuDays.find(day => day.daycare === school.id && dateOnly(day.service_date) === date);
+  return <section className="page-stack"><PageTitle title="Menu Overview" subtitle="Internal view of saved school menus, including unpublished drafts. Edit selections in Monthly Menus." />
+    <div className="toolbar"><label className="month-picker">Month<select value={month} onChange={event => setMonth(event.target.value)}>{months.map(value => <option key={value} value={value}>{monthLabel(value)}</option>)}</select></label><button className="primary" disabled={!schools.length} onClick={() => printMenuHtml(menuOverviewHtml(month, schools.map(school => ({ name: school.name, mealFor: date => savedFor(school, date) }))))}>Print / Save PDF</button></div>
+    <fieldset className="overview-school-picker"><legend>Include schools</legend>{daycares.map(school => <label key={school.id}><input type="checkbox" checked={!excluded.includes(school.id)} onChange={event => setExcluded(previous => event.target.checked ? previous.filter(id => id !== school.id) : [...previous, school.id])} />{school.name}</label>)}</fieldset>
+    {!schools.length && <p className="muted">Select at least one school to create an overview.</p>}
+    {schools.map(school => <section className="panel overview-calendar" key={school.id}><h2>{school.name}</h2><p className="muted small">{monthLabel(month)}</p><div className="web-menu-weekdays">{weekdays.map(day => <div key={day}>{day}</div>)}</div><div className="web-menu-days">{monthDates(month).map(date => {
+      const inside = date.startsWith(month), saved = inside ? savedFor(school, date) : undefined;
+      return <article key={date} className={`web-menu-day ${!inside ? 'web-menu-outside' : saved?.closed ? 'web-menu-closed' : ''}`}><div className="web-menu-date">{shortDate(date)} <span>{dayName(date)}</span></div>{inside && <><div className="overview-meal">{saved ? saved.closed ? <strong>No Lunch Service</strong> : saved.menu || 'No menu selected' : 'Not saved'}</div>{saved?.note && <p className="web-menu-note">{saved.note}</p>}{saved && !saved.published && <span className="overview-draft">Draft</span>}</>}</article>;
+    })}</div></section>)}
   </section>;
 }
 
