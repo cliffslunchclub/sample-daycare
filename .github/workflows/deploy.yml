@@ -67,10 +67,26 @@ jobs:
           root=os.environ['SG_ROOT'].rstrip('/')
           if not root or '\n' in root or '"' in root:
               raise SystemExit('Set SITEGROUND_ROOT to the verified absolute folder containing your subdomain folders')
+          with open('/tmp/cache-read.sftp','w') as f:
+              for domain in ['preschool','lba-bf','lba-fl','tle-ec']:
+                  target=f'{root}/{domain}.cliffslunchclub.com/public_html'
+                  f.write(f'-get "{target}/.htaccess" "/tmp/{domain}.htaccess"\n')
+          PY
+          sftp -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/siteground -P "$SG_PORT" -b /tmp/cache-read.sftp "$SG_USER@$SG_HOST"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          root=os.environ['SG_ROOT'].rstrip('/')
+          policy=Path('frontend/deploy/cache-headers.htaccess').read_text()
           with open('/tmp/frontend.sftp','w') as f:
               for domain in ['preschool','lba-bf','lba-fl','tle-ec']:
                   target=f'{root}/{domain}.cliffslunchclub.com/public_html'
                   f.write(f'put -r frontend/dist/assets "{target}/"\n')
+                  existing=Path(f'/tmp/{domain}.htaccess')
+                  contents=existing.read_text() if existing.exists() else ''
+                  contents=re.sub(r'(?ms)^# BEGIN CLC PRESCHOOL CACHE POLICY\n.*?^# END CLC PRESCHOOL CACHE POLICY\n?', '', contents)
+                  existing.write_text(contents.rstrip() + '\n\n' + policy)
+                  f.write(f'put "/tmp/{domain}.htaccess" "{target}/.htaccess"\n')
                   f.write(f'put frontend/dist/index.html "{target}/index.html"\n')
           PY
           sftp -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/siteground -P "$SG_PORT" -b /tmp/frontend.sftp "$SG_USER@$SG_HOST"
