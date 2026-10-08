@@ -1,4 +1,4 @@
-const tracked=['students','classrooms','daycares','substitutions','menu_days','menu_items','users','lunch_requests','invoices','invoice_flags','school_notes'];
+const tracked=['students','classrooms','daycares','substitutions','menu_days','menu_items','users','lunch_requests','school_notes'];
 function snapshot(row){
   const type=row.collection().name;
   if(!tracked.includes(type))return {};

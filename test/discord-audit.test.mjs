@@ -31,3 +31,9 @@ test('Discord worker respects an active lease and does not send the same job con
  const app={findRecordsByFilter:c=>c==='discord_audit_settings'?[config]:[job],findRecordById:()=>job,runInTransaction:fn=>fn(app),save:()=>{}};
  l.deliver(app);assert.equal(calls,0);assert.equal(state.attempts,1);
 });
+
+test('previously queued invoice activity is skipped without posting to Discord',()=>{
+ const config=row({enabled:true,webhook_url:webhook}),state={status:'pending',next_attempt:'2026-01-01T00:00:00Z',audit_id:'old-invoice',attempts:0},job=row(state);let sends=0;
+ const l=lib({$http:{send:()=>{sends++;return {statusCode:200};}}}),app={findRecordsByFilter:c=>c==='discord_audit_settings'?[config]:[job],findRecordById:c=>c==='audit_logs'?row({entity_type:'invoices'}):job,runInTransaction:fn=>fn(app),save:()=>{}};
+ l.deliver(app);assert.equal(state.status,'skipped');assert.equal(sends,0);assert.equal(l.shouldNotify(row({entity_type:'invoice_flags'})),false);
+});

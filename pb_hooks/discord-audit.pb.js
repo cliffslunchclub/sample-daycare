@@ -1,6 +1,6 @@
 routerAdd('GET','/api/discord-audit',(e)=>{
  if(!e.auth||!e.auth.getBool('active')||e.auth.getString('role')!=='clc_admin')return e.json(403,{message:'CLC access is required.'});
- const lib=require(__hooks+'/discord-audit-lib.js'),config=lib.settings(e.app);let pending=0;try{pending=e.app.countRecords('discord_audit_outbox',$dbx.exp('[[status]] != {:sent}',{sent:'sent'}));}catch(_){}
+ const lib=require(__hooks+'/discord-audit-lib.js'),config=lib.settings(e.app);let pending=0;try{pending=e.app.countRecords('discord_audit_outbox',$dbx.exp('[[status]] IN ({:pending}, {:processing})',{pending:'pending',processing:'processing'}));}catch(_){}
  return e.json(200,{configured:Boolean(config?.getString('webhook_url')),enabled:Boolean(config?.getBool('enabled')),error:config?.getString('last_error')||'',pending});
 });
 routerAdd('POST','/api/discord-audit',(e)=>{

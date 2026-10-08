@@ -12,7 +12,8 @@ function payload(audit){
   const effective=audit.getString('effective_date');
   return {username:'CLC Preschool Audit',allowed_mentions:{parse:[]},embeds:[{title:(types[type]||'School Activity')+' '+({create:'Created',update:'Updated',delete:'Deleted'}[audit.getString('action')]||'Changed'),color:0x5b8067,description:(text(audit.getString('school_name')||'CLC / Shared')+' · '+label).slice(0,1000),fields:[{name:'Changed by',value:text(audit.getString('actor_name')),inline:true},...(effective?[{name:'Effective date',value:text(effective),inline:true}]:[]),{name:'Changes',value:lines.length?lines.join('\n').slice(0,1024):'Details are available in the app’s Audit Log'}],footer:{text:'Audit ID: '+audit.id},timestamp:new Date(audit.getString('occurred_at')).toISOString()}]};
 }
-function enqueue(app,audit){const config=settings(app);if(!config||!config.getBool('enabled')||!validWebhook(config.getString('webhook_url')))return;
+function shouldNotify(audit){return !['invoices','invoice_flags'].includes(audit.getString('entity_type'));}
+function enqueue(app,audit){if(!shouldNotify(audit))return;const config=settings(app);if(!config||!config.getBool('enabled')||!validWebhook(config.getString('webhook_url')))return;
  const row=new Record(app.findCollectionByNameOrId('discord_audit_outbox'));row.set('audit_id',audit.id);row.set('status','pending');row.set('next_attempt',new Date().toISOString());row.set('attempts',0);app.save(row);
 }
 function deliver(app){
@@ -20,11 +21,13 @@ function deliver(app){
  const now=new Date().toISOString();const jobs=app.findRecordsByFilter('discord_audit_outbox','(status = "pending" && next_attempt <= {:now}) || (status = "processing" && lease_until <= {:now})','next_attempt',5,0,{now});
  for(const candidate of jobs){
   let job;app.runInTransaction(tx=>{const current=tx.findRecordById('discord_audit_outbox',candidate.id);const available=current.getString('status')==='pending'&&Date.parse(current.getString('next_attempt'))<=Date.parse(now)||current.getString('status')==='processing'&&Date.parse(current.getString('lease_until'))<=Date.parse(now);if(!available)return;current.set('status','processing');current.set('lease_until',new Date(Date.now()+120000).toISOString());current.set('attempts',current.getInt('attempts')+1);tx.save(current);job=current;});if(!job)continue;
-  let response;try{const audit=app.findRecordById('audit_logs',job.getString('audit_id'));response=$http.send({url:config.getString('webhook_url').replace(/\/$/,'')+'?wait=true',method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload(audit)),timeout:8});}catch(_){response={statusCode:0};}
+  let audit;try{audit=app.findRecordById('audit_logs',job.getString('audit_id'));}catch(_){job.set('status','skipped');job.set('last_error','');app.save(job);continue;}
+  if(!shouldNotify(audit)){job.set('status','skipped');job.set('last_error','');app.save(job);continue;}
+  let response;try{response=$http.send({url:config.getString('webhook_url').replace(/\/$/,'')+'?wait=true',method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload(audit)),timeout:8});}catch(_){response={statusCode:0};}
   const status=Number(response.statusCode);
   if(status>=200&&status<300){job.set('status','sent');job.set('sent_at',new Date().toISOString());job.set('message_id',String(response.json?.id||''));job.set('last_error','');}
   else{let delay=Math.min(3600,60*Math.pow(2,Math.min(6,job.getInt('attempts')-1)));if(status===429)delay=Math.max(60,Math.min(86400,Math.ceil(Number(response.json?.retry_after)||60)));const error=status?'Discord returned HTTP '+status:'Discord delivery timed out or could not connect';job.set('status','pending');job.set('last_error',error);job.set('next_attempt',new Date(Date.now()+delay*1000).toISOString());if([401,403,404].includes(status)){config.set('enabled',false);config.set('last_error','Discord rejected the webhook. Replace it and enable notifications again.');app.save(config);}}
   app.save(job);if(status===429||[401,403,404].includes(status))break;
  }
 }
-module.exports={validWebhook,settings,payload,enqueue,deliver};
+module.exports={validWebhook,settings,payload,shouldNotify,enqueue,deliver};
