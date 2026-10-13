@@ -22,6 +22,7 @@ function write(app,row,actor,action,before,after){
   const diff=changes(before,after);if(action==='update'&&!Object.keys(diff).length)return;
   const type=row.collection().name,school=type==='daycares'?row.id:String(after?.daycare||before?.daycare||'');
   let schoolName='';if(school){try{schoolName=app.findRecordById('daycares',school).getString('name');}catch(_){schoolName=before?.name||school;}}
+  require(__hooks+'/audit-display.js').decorate(app,type,school,schoolName,before,after,diff);
   const record=new Record(collection);
   const data={daycare:school,school_name:schoolName,actor_id:actor?.id||'',actor_name:actor?(actor.getString('display_name')||actor.getString('email')||'Administrator'):'System',actor_email:actor?.getString('email')||'',action,entity_type:type,entity_id:row.id,entity_label:after?.name||before?.name||after?.student_label||before?.student_label||after?.number||before?.number||after?.display_name||before?.display_name||after?.service_date||before?.service_date||row.id,occurred_at:new Date().toISOString(),effective_date:action==='delete'&&type==='students'?require(__hooks+'/billing-lib.js').addDays(require(__hooks+'/billing-lib.js').nyDate(),1):(after?.billing_effective_date||before?.billing_effective_date||''),changes:diff};
   for(const[k,v]of Object.entries(data))record.set(k,v);app.save(record);require(__hooks+'/discord-audit-lib.js').enqueue(app,record);
