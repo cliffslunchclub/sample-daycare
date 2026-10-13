@@ -56,7 +56,7 @@ test('weekly summary keeps allergy meals in totals and Subs, excluding them from
   const js = ts.transpileModule(summary.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
   const { runInNewContext } = await import('node:vm');
   const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const context = { weekdays, React: { createElement: (type, props, ...children) => ({ type, props, children }) } };
+  const context = { weekdays, CollapsiblePanel: 'CollapsiblePanel', React: { createElement: (type, props, ...children) => ({ type, props, children }) } };
   runInNewContext(js, context);
   const tree = context.WeeklySummary({ locations: [{ id: 'fl', name: 'Lightbridge Fort Lee', public_slug: 'lightbridge-fort-lee', count_mode: 'manual', baseline_counts: Object.fromEntries(weekdays.map(day => [day, 62])), clc_managed_counts: Object.fromEntries(weekdays.map(day => [day, 2])) }], students: [], subs: [] });
   const nodes = [];
@@ -69,4 +69,17 @@ test('weekly summary keeps allergy meals in totals and Subs, excluding them from
   const pizza = nodes.find(node => node.type === 'tr' && text(node).includes('Friday pizza'));
   assert.ok(pizza);
   assert.equal(text(pizza.children.find(node => node?.type === 'td')), '22');
+});
+
+
+test('notes and roster use distinct sibling keys during search updates', async () => {
+  const source = ts.createSourceFile('App.tsx', readFileSync(new URL('../frontend/src/App.tsx', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const component = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'SchoolStudentsPage');
+  const js = ts.transpileModule(component.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
+  const { runInNewContext } = await import('node:vm');
+  const context = { PageTitle:'title', Empty:'empty', NotesRequests:'notes', CountSettings:'counts', StudentsPage:'roster', CollapsiblePanel:'panel', React:{createElement:(type,props,...children)=>({type,props,children})} };
+  runInNewContext(js,context);
+  const tree=context.SchoolStudentsPage({subs:[],current:{id:'school',count_mode:'roster',operations_enabled:true},isClc:true,students:[],classrooms:[]});
+  const keys=tree.children.filter(child=>child && child.props?.key).map(child=>child.props.key);
+  assert.equal(new Set(keys).size,keys.length,'sibling components must not reuse a key');
 });

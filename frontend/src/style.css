@@ -243,3 +243,34 @@
 .roster-filter-cell { text-transform:none; letter-spacing:normal; }
 .sub-panel .student-filter-bar { margin:1rem 0; }
 @media(max-width:640px) { .student-filter-bar > select,.student-filter-bar > input { width:100%; min-width:0; max-width:none; flex:auto; } }
+
+/* One control and one chevron treatment for every admin content panel. */
+.collapsible-panel { display:block; }
+.panel-toggle-row { margin:0; }
+.panel-toggle { display:flex; align-items:center; gap:.65rem; width:100%; padding:0; border:0; background:transparent; color:var(--ink); text-align:left; cursor:pointer; }
+.panel-toggle:focus-visible { outline:2px solid #5b8067; outline-offset:5px; border-radius:4px; }
+.section-chevron { width:20px; height:20px; flex:none; fill:none; stroke:#5b8067; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.panel-toggle[aria-expanded=true] .section-chevron { transform:rotate(90deg); }
+.panel-toggle-heading { display:flex; align-items:center; gap:.75rem; flex:1; min-width:0; }
+.panel-toggle-heading h2,.panel-toggle-heading h3 { flex:1; margin:0; font-size:1.12rem; line-height:1.4; }
+.panel-body { min-width:0; margin-top:1rem; }
+.panel-body[hidden] { display:none!important; }
+.panel-original-heading { display:none!important; }
+.collapsible-panel .collapsible-content { margin-top:0; }
+.collapsible-panel.sub-panel .panel-body > p { margin:0 0 .75rem; }
+.content details > summary { cursor:pointer; list-style:none; }
+.content details > summary::-webkit-details-marker { display:none; }
+.content details > summary::before { content:""; display:inline-block; width:20px; height:20px; vertical-align:middle; margin-right:.65rem; background:center/20px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='m7 4 6 6-6 6' fill='none' stroke='%235b8067' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+.content details[open] > summary::before { transform:rotate(90deg); }
+@media(max-width:640px) { .panel-toggle-heading { flex-wrap:wrap; gap:.3rem; } .panel-toggle-heading h2,.panel-toggle-heading h3 { flex-basis:100%; } }
+@media print {
+  .panel-toggle-row { display:none!important; }
+  .panel-body,.panel-body[hidden] { display:contents!important; margin:0!important; }
+  .panel-original-heading { display:revert!important; }
+  .collapsible-panel.panel-stack,.collapsible-panel.count-settings,.collapsible-panel.settings-panel { display:flex; }
+  .content details > summary::before { display:none; }
+}
+
+.substitution-edit-form { display:flex; align-items:flex-end; flex-wrap:wrap; gap:.6rem; }
+.substitution-edit-form label { min-width:150px; }
+@media(max-width:640px) { .saved-subs .list-row { flex-wrap:wrap; } .substitution-edit-form,.substitution-edit-form label { width:100%; } }
