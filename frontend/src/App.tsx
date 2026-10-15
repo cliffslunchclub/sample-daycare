@@ -275,8 +275,9 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
   const selectableDaycare = selected === 'all' ? null : current;
   const nav: [Tab, string][] = showStudentTab ? [['students', 'Students & Classrooms']] : [];
   if (!isClc) nav.push(['menu', 'Menu']);
-  nav.push(['invoices', 'Invoices'], ['audit', 'Audit Log']);
-  if (isClc) { nav.unshift(['summary', 'Weekly Summary']); nav.push(['menu', 'Monthly Menus'], ['overview', 'Menu Overview'], ['items', 'Menu Items'], ['users', 'School Admins'], ['locations', 'School Settings']); }
+  nav.push(['invoices', 'Invoices']);
+  if (isClc) { nav.unshift(['summary', 'Weekly Summary']); nav.push(['menu', 'Monthly Menus'], ['overview', 'Menu Overview'], ['items', 'Menu Items'], ['audit', 'Audit Log'], ['users', 'School Admins'], ['locations', 'School Settings']); }
+  else nav.push(['audit', 'Audit Log']);
 
   if (!user) return <main className="login-page"><form className="login-card" onSubmit={signIn}>
     <a className="back-link" href="/">← Back to home</a><div className="eyebrow">{superAdminOnly ? 'CLC SUPER ADMIN' : 'SCHOOL STAFF'}</div><h1>{superAdminOnly ? 'CLC super admin sign in' : 'Admin sign in'}</h1><p>{superAdminOnly ? 'Sign in to manage menus and school settings across all locations.' : 'Sign in to manage schedules, substitutions, and counts.'}</p>
