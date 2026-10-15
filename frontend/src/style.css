@@ -291,5 +291,5 @@
 .legend-option small{min-height:1em;overflow-wrap:anywhere}
 @media print{.summary-legend-bergenfield{font-size:8pt;column-gap:12pt}}
 
-.summary-legend-tle{width:fit-content;max-width:100%;margin-left:auto;margin-right:auto;grid-template-columns:repeat(2,minmax(0,max-content));justify-content:center;column-gap:1.5rem;row-gap:.35rem;text-align:left}
+.summary-legend-tle{width:100%;max-width:100%;grid-template-columns:repeat(2,minmax(0,max-content));justify-content:center;column-gap:1.5rem;row-gap:.35rem;text-align:left}
 .summary-legend-tle>div{min-width:0;overflow-wrap:anywhere}
