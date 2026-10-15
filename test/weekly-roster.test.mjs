@@ -42,3 +42,12 @@ test('the current-week roster is above Notes; all other Students & Classrooms pa
 test('inclusive last-lunch dates retain earlier lunches and exclude later service days',()=>{
  const f=fixture();f.d.menus=[];f.d.history[1].snapshot.last_lunch_date='2026-10-12';const out=f.l.build(f.app,f.school,'2026-10-15');assert.equal(out.days[0].total,1);assert.equal(out.days[2].total,0);
 });
+
+test('current student names are consistent across dated attendance and linked one-off lunches, with historical fallback for deleted students',()=>{
+ const f=fixture();f.d.menus=[];f.d.history[1].snapshot.name='Leo Stern (veg)';
+ const original=f.app.findRecordsByFilter;f.app.findRecordsByFilter=type=>type==='students'?[row('kid',{name:'Leo Stern',classroom:'purple'})]:original(type);
+ f.d.requests.push({kind:'lunch',status:'approved',student:'kid',student_label:'Leo Stern (veg)',service_date:'2026-10-16',classroom_label:'Purple Cats'});
+ const out=f.l.build(f.app,f.school,'2026-10-15');for(const index of [0,2,4])assert.equal(out.days[index].classrooms.flatMap(c=>c.students).find(s=>s.name.startsWith('Leo')).name,'Leo Stern');
+ assert.equal(out.days[1].total,0);assert.equal(f.d.history[1].snapshot.name,'Leo Stern (veg)');
+ f.app.findRecordsByFilter=type=>type==='students'?[]:original(type);const past=f.l.build(f.app,f.school,'2026-10-15');assert.equal(past.days[0].classrooms[0].students[0].name,'Leo Stern (veg)');
+});

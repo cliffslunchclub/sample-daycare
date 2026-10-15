@@ -17,10 +17,10 @@ function build(app,school,today=lib.nyDate()){
   function add(id,label,name,sub){const g=group(id,label);g.students.push({name,sub});g.total++;}
   if(!day.closed){
    if(state.count_mode==='manual'){if(day.quantity){const g=group('','School Lunches');g.total=day.quantity;}if(day.allergies){const g=group('','CLC-Managed Lunches');g.total=day.allergies;}}
-   else for(const student of day.roster){const room=classroom(student.id,student,date),sub=subs.some(s=>s.student===student.id&&s.code&&(s.recurring?s.weekday===name&&(!s.date||s.date<=date):s.date===date));add(room,'',student.name||students.find(s=>s.id===student.id)?.name||'Student',sub);}
+   else for(const student of day.roster){const room=classroom(student.id,student,date),sub=subs.some(s=>s.student===student.id&&s.code&&(s.recurring?s.weekday===name&&(!s.date||s.date<=date):s.date===date));add(room,'',students.find(s=>s.id===student.id)?.name||student.name||'Student',sub);}
    for(const r of d.requests.filter(r=>r.kind==='lunch'&&r.status==='approved'&&r.service_date===date)){
     if(day.roster.some(s=>s.id===r.student||String(s.name||'').trim().toLowerCase()===String(r.student_label||'').trim().toLowerCase()))continue;
-    add('',r.classroom_label||'Unassigned',r.student_label||students.find(s=>s.id===r.student)?.name||'Trial Student',Boolean(r.code));
+    add('',r.classroom_label||'Unassigned',students.find(s=>s.id===r.student)?.name||r.student_label||'Trial Student',Boolean(r.code));
    }
   }
   const classrooms=[...groups.values()].sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name));for(const room of classrooms)room.students.sort((a,b)=>a.name.localeCompare(b.name));

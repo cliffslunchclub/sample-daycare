@@ -67,6 +67,11 @@ try:
  counts=req('POST','/api/billing',{'daycare':a['id'],'action':'counts','start':out['start'],'end':out['end']},clc)
  assert [d['kitchen_total'] for d in counts['dates']]==[d['total'] for d in out['days']]
  assert get('lunch_requests',trial['id'])['status']=='approved'
+ # A name edit must update every printed day without changing dated attendance.
+ patch('students',kid['id'],{'name':'QA Renamed'})
+ renamed=req('POST','/api/weekly-roster',{'daycare':a['id']},staff)
+ assert renamed['days'][0]['classrooms'][0]['students'][0]['name']=='QA Renamed'
+ assert [d['total'] for d in renamed['days']]==[d['total'] for d in out['days']]
  patch('students',kid['id'],{'last_lunch_date':(monday-timedelta(days=1)).isoformat()})
  assert req('POST','/api/weekly-roster',{'daycare':a['id']},staff)['days'][0]['total']==0
  patch('daycares',b['id'],{'count_mode':'manual','baseline_counts':{'Monday':120},'clc_managed_counts':{'Monday':2},'billing_effective_date':past})
