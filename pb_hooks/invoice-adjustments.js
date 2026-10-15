@@ -18,6 +18,7 @@ function list(app,school,includeDismissed=false){
   const item={id:'request:'+request.id,source_kind:'request',source_id:'',source_number:'Unbilled lunch',source_end:request.service_date,unit:request.id,label:request.student_label,request_id:request.id,request_student:request.student,description:line.description,quantity:line.quantity,rate:line.rate,taxable:true,amount_cents:Math.round(line.quantity*Math.round(line.rate*100)),service_dates:[request.service_date],period_start:request.service_date,period_end:request.service_date,previous_quantity:0,current_quantity:line.quantity};item.token=JSON.stringify([request.id,request.status,request.invoice_id,request.service_date,line]);items.push(item);
  }
  items.push(...require(__hooks+'/invoice-controls.js').draftItems(app,school));
+ for(const item of items)if(item.request_id)item.request_student=d.requests.find(r=>r.id===item.request_id)?.student||'';
  const dismissed=(JSON.parse(school.getString('invoice_adjustment_dismissals')||'null')||{});
  return includeDismissed?items:items.filter(item=>dismissed[item.id]!==item.token);
 }
@@ -39,7 +40,7 @@ function apply(app,school,actor,body){
  for(const r of chosen){
   if(r.source_kind==='draft'){const entries=require(__hooks+'/invoice-controls.js').removed(target),entry=entries.find(x=>x.key===r.unit);lines.push(entry.line);target.set('removed_adjustments',entries.filter(x=>x!==entry));continue;}
   if(r.source_kind==='request'){const request=app.findRecordById('lunch_requests',r.request_id);lines.push(require(__hooks+'/lunch-request-lib.js').line(app,school,request));request.set('billing_deferred',false);request.set('invoice_id',target.id);require(__hooks+'/audit-lib.js').save(app,request,actor);continue;}
-  lines.push({description:r.description,quantity:r.quantity,rate:r.rate,taxable:true,adjustment_type:'pending',pending_source:r.source_id,pending_number:r.source_number,pending_unit:r.unit,pending_entity:r.entity,pending_label:r.label,request_label:r.request_id?r.label:undefined,pending_from:r.previous_quantity,pending_to:r.current_quantity,pending_dates:r.current_dates,pending_at:new Date().toISOString(),pending_request:r.request_id||'',service_dates:r.service_dates});if(r.request_id){const request=app.findRecordById('lunch_requests',r.request_id);if(!request.getString('invoice_id')){request.set('invoice_id',target.id);require(__hooks+'/audit-lib.js').save(app,request,actor);}}}
+  lines.push({description:r.description,quantity:r.quantity,rate:r.rate,taxable:true,adjustment_type:'pending',pending_source:r.source_id,pending_number:r.source_number,pending_unit:r.unit,pending_entity:r.entity,pending_label:r.label,request_label:r.request_id?r.label:undefined,request_student:r.request_student||'',pending_from:r.previous_quantity,pending_to:r.current_quantity,pending_dates:r.current_dates,pending_at:new Date().toISOString(),pending_request:r.request_id||'',service_dates:r.service_dates});if(r.request_id){const request=app.findRecordById('lunch_requests',r.request_id);if(!request.getString('invoice_id')){request.set('invoice_id',target.id);require(__hooks+'/audit-lib.js').save(app,request,actor);}}}
  totals(app,target,lines,actor);return plain(target);
 }
 function remove(app,school,actor,body){
@@ -74,9 +75,15 @@ function ensure(app){
  });
 }
 function dismiss(app,school,actor,body){
- const available=list(app,school),item=available.find(x=>x.id===body.id&&x.token===body.token);if(!item)throw new Error('This adjustment changed. Refresh and review it again.');
- if(item.source_kind==='draft'){const invoice=app.findRecordById('invoices',item.source_id),entries=require(__hooks+'/invoice-controls.js').removed(invoice);entries.find(x=>x.key===item.unit).dismissed=true;invoice.set('removed_adjustments',entries);require(__hooks+'/audit-lib.js').save(app,invoice,actor);}
- else{const hidden=(JSON.parse(school.getString('invoice_adjustment_dismissals')||'null')||{});hidden[item.id]=item.token;school.set('invoice_adjustment_dismissals',hidden);app.save(school);}
+ const selected=Array.isArray(body.items)?body.items:[body];
+ if(!selected.length||selected.length>150||new Set(selected.map(x=>x.id)).size!==selected.length)throw new Error('Choose between 1 and 150 different pending adjustments.');
+ const available=list(app,school),chosen=selected.map(value=>{const item=available.find(x=>x.id===value.id&&x.token===value.token);if(!item)throw new Error('An adjustment changed. Refresh and review the group again. Nothing was dismissed.');return item;});
+ const hidden=(JSON.parse(school.getString('invoice_adjustment_dismissals')||'null')||{});
+ for(const item of chosen){
+  if(item.source_kind==='draft'){const invoice=app.findRecordById('invoices',item.source_id),entries=require(__hooks+'/invoice-controls.js').removed(invoice);entries.find(x=>x.key===item.unit).dismissed=true;invoice.set('removed_adjustments',entries);require(__hooks+'/audit-lib.js').save(app,invoice,actor);}
+  else hidden[item.id]=item.token;
+ }
+ school.set('invoice_adjustment_dismissals',hidden);app.save(school);
  return {message:'Adjustment dismissed. It stays hidden unless its underlying lunch or schedule changes.'};
 }
 function currentValues(app,school){

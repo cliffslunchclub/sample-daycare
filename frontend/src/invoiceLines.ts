@@ -19,3 +19,15 @@ export function invoiceRows(lines:InvoiceLine[]):{line:InvoiceLine;indices:numbe
   return {...row,line:{...l,description:`${l.request_label} — ${Math.abs(l.quantity)} one-off lunches${l.quantity<0?' (credit)':''} (${dates.map(date).join(', ')})${sources.length?' · Corrections for '+sources.join(', '):''}`}};
  });
 }
+
+type PendingRow=Record<string,any>;
+export function pendingRows(items:PendingRow[]):PendingRow[]{
+ const rows:PendingRow[]=[],groups=new Map<string,PendingRow>();
+ for(const item of items){
+  const key=item.request_id?JSON.stringify([item.source_kind||'closed',item.source_id,item.request_student||String(item.label||'').trim().toLowerCase(),Number(item.rate),item.taxable!==false,Math.sign(item.quantity)]):'single:'+item.id;
+  let row=groups.get(key);
+  if(!row){row={...item,members:[],service_dates:[],quantity:0,amount_cents:0,previous_quantity:0,current_quantity:0};groups.set(key,row);rows.push(row);}
+  row.members.push(item);row.quantity+=Number(item.quantity);row.amount_cents+=Number(item.amount_cents);row.previous_quantity+=Number(item.previous_quantity||0);row.current_quantity+=Number(item.current_quantity||0);row.service_dates=[...new Set([...row.service_dates,...(item.service_dates||[])])].sort();
+ }
+ return rows;
+}

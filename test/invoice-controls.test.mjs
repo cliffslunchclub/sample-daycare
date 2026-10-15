@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {invoiceRows} from '../frontend/src/invoiceLines.ts';
+import {invoiceRows,pendingRows} from '../frontend/src/invoiceLines.ts';
 import {invoicePrintHtml} from '../frontend/src/invoicePrint.ts';
 import {invoicePdf} from '../frontend/src/invoicePdf.ts';
 function lunch(id,date,extra={}){return {description:'One-off lunch: Bilal ('+date+')',quantity:1,rate:4,taxable:true,request_id:id,request_label:'Bilal',service_dates:[date],...extra};}
@@ -26,4 +26,10 @@ test('omitted schedule adjustments modify the billed reference without changing 
  const line={description:'Add',quantity:2,rate:4,schedule_entity:'student:kid',student_label:'Bilal',service_dates:['2026-10-20','2026-10-27']};
  const invoice={getString:()=>JSON.stringify([{key:c.module.exports.key(line),line}])};const reference={units:{'student:kid|400':{entity:'student:kid',rate:4,quantity:7,dates:['2026-10-20','2026-10-27','2026-10-30']}}};
  const result=c.module.exports.adjustedReference(invoice,reference);assert.equal(result.units['student:kid|400'].quantity,5);assert.equal(reference.units['student:kid|400'].quantity,7);assert.deepEqual(Array.from(result.units['student:kid|400'].dates),['2026-10-30']);
+});
+
+test('pending groups keep charges, credits, original invoices, rates, and non-request changes distinct',()=>{
+ const row={id:'a',request_id:'r1',source_id:'oct',label:'Bilal',quantity:1,rate:4,taxable:true,amount_cents:400,previous_quantity:0,current_quantity:1,service_dates:['2026-10-30']};
+ const grouped=pendingRows([row,{...row,id:'b',request_id:'r2',service_dates:['2026-10-20']},{...row,id:'credit',quantity:-1,amount_cents:-400},{...row,id:'rate',rate:3.5},{...row,id:'source',source_id:'sep'},{...row,id:'schedule',request_id:undefined}]);
+ assert.equal(grouped.length,5);assert.equal(grouped[0].quantity,2);assert.equal(grouped[0].amount_cents,800);assert.equal(grouped[0].members.length,2);assert.deepEqual(grouped[0].service_dates,['2026-10-20','2026-10-30']);assert.equal(row.quantity,1);
 });

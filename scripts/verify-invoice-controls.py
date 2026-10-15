@@ -143,6 +143,15 @@ try:
  patch('invoices',inv['id'],{'shared':True});eb({'action':'close-invoice','id':inv['id']});assert not eb({'action':'pending-adjustments'})['items']
  # New changes to a previously dismissed difference are visible for a fresh review.
  patch('students',kid['id'],{'service_days':['Tuesday','Wednesday','Friday'],'billing_effective_date':'2026-10-19'});assert eb({'action':'pending-adjustments'})['items']
+ # Group dismiss validates every member before hiding anything.
+ pending=[item for item in billing({'action':'pending-adjustments'})['items'] if item.get('request_id') in [r['id'] for r in group]]
+ assert len(pending)==2
+ items=[{'id':item['id'],'token':item['token']} for item in pending]
+ req('POST','/api/billing',{'daycare':a['id'],'action':'dismiss-pending','items':[items[0],{'id':items[1]['id'],'token':'stale'}]},clc,400)
+ assert len([item for item in billing({'action':'pending-adjustments'})['items'] if item.get('request_id') in [r['id'] for r in group]])==2
+ billing({'action':'dismiss-pending','items':items});assert not any(item.get('request_id') in [r['id'] for r in group] for item in billing({'action':'pending-adjustments'})['items'])
+ assert all(get('lunch_requests',r['id'])['status']=='approved' for r in group)
+ print('PASS grouped pending dismissal: all members hidden together, stale groups make no changes, lunches remain approved',flush=True)
  print('PASS additional controls: atomic grouped removal, unchanged kitchen lunches, school-role denial, deferred negative adjustments and dismissal across invoice close',flush=True)
  print('PASS controls: superadmin scoped archive/restore, unchanged lunches and invoices, one-off removal/defer/dismiss/reapply, schedule removal/recalculate/restore/close, immutable closed totals and manual pending corrections',flush=True)
  print('PASS real PocketBase: billing assignment undo, draft line/totals removal, no rebilling on recalculate, frozen closed invoices, pending credits, correction draft cleanup, already-billed corrections, stale preview and permissions',flush=True)
