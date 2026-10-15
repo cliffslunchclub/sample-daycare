@@ -42,3 +42,16 @@ test('anonymous and school-admin undo endpoint requests are denied',()=>{
 test('schedule state equality ignores object key ordering but retains values and version order',()=>{
  assert.equal(state.same({a:1,b:{x:2,y:3}},{b:{y:3,x:2},a:1}),true);assert.equal(state.same({a:[1,2]},{a:[2,1]}),false);
 });
+
+test('billing-only assignment undo returns an approved lunch to pending and clears its charge assignment',()=>{
+ const f=fixture(),find=f.app.findRecordById;
+ const request=f.record('lunch_requests','request',{daycare:'school',kind:'lunch',status:'approved',invoice_id:'draft',student_label:'Bilal',service_date:'2026-10-30'});
+ const invoice=f.record('invoices','draft',{daycare:'school',status:'draft',lines:[]});
+ f.source.values.entity_type='lunch_requests';f.source.values.entity_id='request';f.source.values.changes={invoice_id:{before:'',after:'draft'}};
+ f.app.findRecordById=(type,id)=>type==='lunch_requests'?request:type==='invoices'?invoice:find(type,id);
+ f.app.findRecordsByFilter=type=>type==='invoices'?[invoice]:[];
+ const p=f.lib.plan(f.app,f.actor,'event');assert.equal(p.requestChange,true);assert.equal(p.restore.status,'pending');assert.equal(p.restore.invoice_id,'');assert.match(p.preview.message,/pending credit/);assert.equal(f.writes(),0);
+ request.values.invoice_id='other';assert.throws(()=>f.lib.plan(f.app,f.actor,'event'),/no longer current/);
+ request.values.invoice_id='draft';request.values.status='deleted';assert.throws(()=>f.lib.plan(f.app,f.actor,'event'),/no longer current/);
+ request.values.status='approved';f.source.values.changes.invoice_id.before='earlier';assert.throws(()=>f.lib.plan(f.app,f.actor,'event'),/moved an existing/);
+});

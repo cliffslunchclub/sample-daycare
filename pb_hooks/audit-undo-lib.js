@@ -15,6 +15,12 @@ function plan(app,actor,id){
  const later=app.findRecordsByFilter('audit_logs','entity_type = {:type} && entity_id = {:id} && occurred_at >= {:date} && id != {:audit}','',0,0,{type,id:row.id,date:source.getString('occurred_at'),audit:source.id});
  if(later.some(log=>{const c=JSON.parse(log.getString('changes')||'{}');const fields=Object.keys(c).filter(k=>!k.startsWith('__'));const billingOnly=type==='lunch_requests'&&fields.length===1&&fields[0]==='invoice_id';return !c.__undo&&!c.__undone&&!billingOnly;}))throw new Error('A newer change exists for this record. Undo the later change first.');
  const current=audit.snapshot(row),keys=Object.keys(changes).filter(k=>!k.startsWith('__'));
+ const billingUndo=type==='lunch_requests'&&action==='update'&&keys.length===1&&keys[0]==='invoice_id';
+ if(billingUndo){
+  if(current.kind!=='lunch'||current.status!=='approved'||!current.invoice_id||current.invoice_id!==changes.invoice_id.after)throw new Error('This lunch billing assignment is no longer current. Review the latest request and invoice first.');
+  if(changes.invoice_id.before)throw new Error('This entry moved an existing invoice assignment. Review the original invoice before making a billing correction.');
+  const assigned=app.findRecordById('invoices',current.invoice_id);if(assigned.getString('daycare')!==schoolId)throw new Error('Invoice belongs to another school.');
+ }
  for(const k of keys){if(type==='lunch_requests'&&k==='invoice_id')continue;if(!state.same(current[k]??null,changes[k].after??null))throw new Error('This record no longer matches the saved change. Refresh and review newer activity first.');}
  const effective=String(changes.billing_effective_date?.after||(type==='students'&&keys.some(k=>scheduleKeys.includes(k)&&k!=='last_lunch_date')?current.billing_effective_date:'')||source.getString('effective_date')||current.billing_effective_date||'');
  let mode='update',restore={...current};
@@ -28,8 +34,11 @@ function plan(app,actor,id){
   if(type==='menu_items'&&app.findRecordsByFilter('menu_days','menu_item = {:item}','',1,0,{item:row.id}).length)throw new Error('This menu item is used by a saved menu. Remove or change those selections before undoing its creation.');
  }else{
   if(keys.some(k=>!allowed[type].includes(k)))throw new Error('This older entry contains fields that cannot be restored safely.');
-  if(type==='lunch_requests'&&keys.every(k=>k==='invoice_id'))throw new Error('Invoice assignment is managed by billing and cannot be undone here.');
   for(const k of keys)restore[k]=changes[k].before;
+  // Returning the request to Pending also prevents invoice regeneration from
+  // silently billing the same approved lunch again. Closed references remain
+  // immutable and the pending-adjustment ledger supplies the matching credit.
+  if(billingUndo){restore.status='pending';restore.invoice_id='';}
   if(type==='students'&&keys.some(k=>scheduleKeys.includes(k)&&k!=='last_lunch_date')){
    if(!billing.validDate(effective))throw new Error('The original schedule effective date is unavailable. Edit this student directly.');
    // Restore the old schedule FROM the original change's date, rather than
@@ -59,7 +68,7 @@ function plan(app,actor,id){
  }
  if(type==='menu_days'&&mode!=='remove'&&keys.includes('service_date')&&app.findRecordsByFilter('menu_days','daycare = {:school} && service_date = {:date} && id != {:id}','',1,0,{school:schoolId,date:restore.service_date,id:row.id}).length)throw new Error('Another menu now occupies the original date.');
  let school=null;if(schoolId)school=app.findRecordById('daycares',schoolId);
- const requestChange=type==='lunch_requests'&&restore.kind==='lunch'&&(action==='create'||keys.some(k=>['status','student','student_label','service_date','size','code'].includes(k)));
+ const requestChange=type==='lunch_requests'&&restore.kind==='lunch'&&(billingUndo||action==='create'||keys.some(k=>['status','student','student_label','service_date','size','code'].includes(k)));
  if(requestChange&&restore.status!=='approved')restore.invoice_id='';
  if(requestChange&&restore.status==='approved'){
   const ops=require(__hooks+'/invoice-adjustments.js'),d=ops.data(app,school),day=billing.daily(d.school,d.history,d.menus,restore.service_date);
@@ -77,8 +86,8 @@ function plan(app,actor,id){
  if(type==='menu_days')label='Lunch Menu for '+billing.displayDate(String(current.service_date||'').slice(0,10));
  if(type==='substitutions'){try{label=app.findRecordById('students',current.student).getString('name')+' · '+(current.weekday||'Substitution');}catch(_){label='Substitution';}}
  if(!label||label===row.id)label=type==='lunch_requests'&&current.kind==='note'?'General Note':type==='school_notes'?'School Note':'School Record';
- const summary='Undid '+({students:'student change',classrooms:'classroom change',substitutions:'substitution change',menu_days:'menu change',menu_items:'menu item change',lunch_requests:'note / lunch request change',school_notes:'school note change'}[type])+(label&&label!==row.id?' for '+label:'');
- return {source,row,type,action,changes,current,restore,mode,effective,school,requestChange,scheduleRestore,financial,token,preview:{id:source.id,token,label,summary,entity_type:type,daycare:schoolId,changes:previewChanges,effective_date:type==='students'?effective:'',removes_record:mode==='remove',archives_student:type==='students'&&action==='create',message:'Closed invoices stay frozen. Changed pending adjustments are recalculated; related adjustment lines on editable drafts are removed and returned for review.'}};
+ const summary=billingUndo?'Undid lunch billing for '+label:'Undid '+({students:'student change',classrooms:'classroom change',substitutions:'substitution change',menu_days:'menu change',menu_items:'menu item change',lunch_requests:'note / lunch request change',school_notes:'school note change'}[type])+(label&&label!==row.id?' for '+label:'');
+ return {source,row,type,action,changes,current,restore,mode,effective,school,requestChange,scheduleRestore,financial,token,preview:{id:source.id,token,label,summary,entity_type:type,daycare:schoolId,changes:previewChanges,effective_date:type==='students'?effective:'',removes_record:mode==='remove',archives_student:type==='students'&&action==='create',message:billingUndo?'The lunch request will return to Pending. Its charge will be removed from editable drafts. If already billed on a closed invoice, a pending credit will be available instead. Approve the request again only if you want to bill it again.':'Closed invoices stay frozen. Changed pending adjustments are recalculated; related adjustment lines on editable drafts are removed and returned for review.'}};
 }
 function run(app,actor,body){
  authorize(actor);let result;
