@@ -6,7 +6,7 @@ function snapshot(row){
   const safe={};
   const userKeys=['email','display_name','role','daycare','active'];
   for(const key of Object.keys(value).sort()){
-    if(['id','collectionId','collectionName','created','updated','expand'].includes(key)||/password|token|secret|credential/i.test(key))continue;
+    if(['invoice_adjustment_dismissals','id','collectionId','collectionName','created','updated','expand'].includes(key)||/password|token|secret|credential/i.test(key))continue;
     if(type==='users'&&!userKeys.includes(key))continue;
     const raw=row.getString(key);
     if(['service_days','baseline_counts','clc_managed_counts','baseline_pizza_counts','lines','daily_counts'].includes(key)){try{safe[key]=JSON.parse(raw||'null');}catch(_){safe[key]=value[key];}}

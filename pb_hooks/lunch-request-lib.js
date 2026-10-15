@@ -5,7 +5,7 @@ function line(app,school,r){
  const menus=app.findRecordsByFilter('menu_days','daycare = {:school}','',0,0,{school:school.id}).map(row=>({service_date:row.getString('service_date'),closed:row.getBool('closed')}));
  const day=lib.daily({public_slug:school.getString('public_slug')},lib.withDepartures(history,students),menus,r.getString('service_date'));
  const included=!day.closed&&!day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase());
- return {description:'One-off lunch: '+r.getString('student_label')+' ('+lib.displayDate(r.getString('service_date'))+')',quantity:included?1:0,rate:day.rate,taxable:true,request_id:r.id};
+ return {description:'One-off lunch: '+r.getString('student_label')+' ('+lib.displayDate(r.getString('service_date'))+')',quantity:included?1:0,rate:day.rate,taxable:true,request_id:r.id,request_student:r.getString('student'),request_label:r.getString('student_label'),service_dates:[r.getString('service_date')]};
 }
 function remove(app,r,school,actor,options={}){
  const lib=require(__hooks+'/billing-lib.js'),audit=require(__hooks+'/audit-lib.js');let issued=false;
@@ -40,6 +40,6 @@ function approve(app,r,school,actor,options={}){
   const sum=require(__hooks+'/billing-lib.js').totals(lines);for(const key of Object.keys(sum))invoice.set(key,sum[key]);
   invoice.set('generated_notes',invoice.getString('generated_notes')+'\n'+adjustment.description+': +1 meal.');require(__hooks+'/audit-lib.js').save(app,invoice,actor);r.set('invoice_id',invoice.id);
  }
- r.set('status','approved');if(options.silent)app.save(r);else require(__hooks+'/audit-lib.js').save(app,r,actor);
+ r.set('billing_deferred',false);r.set('status','approved');if(options.silent)app.save(r);else require(__hooks+'/audit-lib.js').save(app,r,actor);
 }
 module.exports={line,remove,approve};

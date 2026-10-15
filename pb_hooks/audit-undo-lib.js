@@ -1,4 +1,4 @@
-const allowed={students:['name','classroom','active','service_days','size','billing_effective_date','last_lunch_date'],classrooms:['name','meal_size','active','age_order'],substitutions:['student','service_date','weekday','code','recurring','pizza_substitution','note'],menu_days:['service_date','menu','menu_item','note','closed','published','pizza_count'],menu_items:['name','active'],lunch_requests:['kind','student','student_label','classroom_label','service_date','size','code','note','status','response','invoice_id','created_by'],school_notes:['note','message','status','response']};
+const allowed={students:['name','classroom','active','service_days','size','billing_effective_date','last_lunch_date'],classrooms:['name','meal_size','active','age_order'],substitutions:['student','service_date','weekday','code','recurring','pizza_substitution','note'],menu_days:['service_date','menu','menu_item','note','closed','published','pizza_count'],menu_items:['name','active'],lunch_requests:['kind','student','student_label','classroom_label','service_date','size','code','note','status','response','invoice_id','created_by','archived','billing_deferred'],school_notes:['note','message','status','response']};
 const scheduleKeys=['active','service_days','billing_effective_date','last_lunch_date'];
 function authorize(actor){if(!actor||!actor.getBool('active')||actor.getString('role')!=='clc_admin')throw new Error('Only CLC superadmins can undo audit changes.');}
 function plan(app,actor,id){
@@ -68,9 +68,9 @@ function plan(app,actor,id){
  }
  if(type==='menu_days'&&mode!=='remove'&&keys.includes('service_date')&&app.findRecordsByFilter('menu_days','daycare = {:school} && service_date = {:date} && id != {:id}','',1,0,{school:schoolId,date:restore.service_date,id:row.id}).length)throw new Error('Another menu now occupies the original date.');
  let school=null;if(schoolId)school=app.findRecordById('daycares',schoolId);
- const requestChange=type==='lunch_requests'&&restore.kind==='lunch'&&(billingUndo||action==='create'||keys.some(k=>['status','student','student_label','service_date','size','code'].includes(k)));
- if(requestChange&&restore.status!=='approved')restore.invoice_id='';
- if(requestChange&&restore.status==='approved'){
+ const requestChange=type==='lunch_requests'&&restore.kind==='lunch'&&(billingUndo||action==='create'||keys.some(k=>['status','student','student_label','service_date','size','code','billing_deferred'].includes(k)));
+ if(requestChange&&(restore.status!=='approved'||restore.billing_deferred))restore.invoice_id='';
+ if(requestChange&&restore.status==='approved'&&!restore.billing_deferred){
   const ops=require(__hooks+'/invoice-adjustments.js'),d=ops.data(app,school),day=billing.daily(d.school,d.history,d.menus,restore.service_date);
   if(day.closed||day.roster.some(s=>s.id===restore.student||String(s.name||'').trim().toLowerCase()===String(restore.student_label||'').trim().toLowerCase()))throw new Error('This lunch cannot be restored: no lunch service or the student is already scheduled.');
   if(d.requests.some(r=>r.id!==row.id&&r.kind==='lunch'&&r.status==='approved'&&r.service_date===restore.service_date&&((restore.student&&r.student===restore.student)||String(r.student_label||'').trim().toLowerCase()===String(restore.student_label||'').trim().toLowerCase())))throw new Error('An approved lunch already exists for this student and date.');
@@ -99,7 +99,7 @@ function run(app,actor,body){
    const requests=require(__hooks+'/lunch-request-lib.js');
    if(p.row.getString('kind')==='lunch'&&(p.row.getString('status')==='approved'||p.row.getString('invoice_id')))requests.remove(tx,p.row,p.school,actor,{silent:true});
    for(const key of allowed[p.type])if(Object.prototype.hasOwnProperty.call(p.restore,key))p.row.set(key,p.restore[key]);
-   if(p.restore.status==='approved'){
+   if(p.restore.status==='approved'&&!p.restore.billing_deferred){
     // An existing frozen assignment is a billed reference, not a draft to edit.
     let frozen=false;if(p.restore.invoice_id){try{const i=tx.findRecordById('invoices',p.restore.invoice_id);frozen=i.getString('daycare')===p.school.id&&i.getString('status')!=='draft';}catch(_){}}
     if(frozen)tx.save(p.row);else{p.row.set('status','pending');p.row.set('invoice_id','');requests.approve(tx,p.row,p.school,actor,{silent:true});}

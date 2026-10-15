@@ -14,7 +14,7 @@ routerAdd('POST', '/api/billing', (e) => {
       const menus=()=>tx.findRecordsByFilter('menu_days','daycare = {:school}','',0,0,{school:schoolId}).map(plain)
       const requests=()=>tx.findRecordsByFilter('lunch_requests','daycare = {:school}','',0,0,{school:schoolId})
       const checkInvoice=id=>{const r=tx.findRecordById('invoices',String(id||''));if(r.getString('daycare')!==schoolId)throw new Error('Invoice belongs to another school.');return r}
-      const putTotals=(record,lines)=>{const sum=lib.totals(lines);for(const key of Object.keys(sum))record.set(key,sum[key])}
+      const putTotals=(record,lines)=>{const sum=lib.totals(lines.length?lines:[{description:'Adjustment',quantity:0,rate:0,taxable:true}]);for(const key of Object.keys(sum))record.set(key,sum[key])}
       const requestLine=r=>require(__hooks+'/lunch-request-lib.js').line(tx,school,r)
       const allInvoices=()=>tx.findRecordsByFilter('invoices','daycare = {:school}','',0,0,{school:schoolId}).map(plain)
       const isTle=school.getString('public_slug')==='tle-englewood-cliffs'
@@ -25,10 +25,16 @@ routerAdd('POST', '/api/billing', (e) => {
       const isClosedDate=date=>adjustments.closedDate(tx,school,date);
       const autoRequests=invoice=>{const pendingIds=JSON.parse(invoice.getString('lines')||'[]').filter(l=>l.pending_request).map(l=>l.pending_request);return requests().filter(r=>r.getString('invoice_id')===invoice.id&&!pendingIds.includes(r.id)&&r.getString('status')==='approved');};
       const biweeklyLines=(start,end)=>{const plan=lib.monthlyPlan(plain(school),history(),menus(),start.slice(0,7),start,end);return {...plan,notes:'Service period: '+lib.displayDate(start)+' to '+lib.displayDate(end)+'.\n'+plan.notes};};
-      if(['pending-adjustments','apply-pending','remove-pending','close-invoice'].includes(action)){
+      if(['pending-adjustments','apply-pending','remove-pending','dismiss-pending','remove-adjustment','remove-adjustments','close-invoice'].includes(action)){
         if(!clc)throw new Error('CLC access is required.');
         if(action==='pending-adjustments')result={items:adjustments.list(tx,school)};
         else if(action==='apply-pending')result=adjustments.apply(tx,school,e.auth,body);
+        else if(action==='dismiss-pending')result=adjustments.dismiss(tx,school,e.auth,body);
+        else if(action==='remove-adjustments'){
+          if(!Array.isArray(body.lines)||!body.lines.length||body.lines.length>200)throw new Error('Choose adjustment lines.');
+          for(const token of body.lines){const invoice=checkInvoice(body.id),lines=JSON.parse(invoice.getString('lines')||'[]'),index=lines.findIndex(l=>JSON.stringify(l)===token);if(index<0)throw new Error('Invoice lines changed. Save or refresh before removing them.');result=require(__hooks+'/invoice-controls.js').remove(tx,school,e.auth,{id:invoice.id,index,token});}
+        }
+        else if(action==='remove-adjustment')result=require(__hooks+'/invoice-controls.js').remove(tx,school,e.auth,body);
         else if(action==='remove-pending')result=adjustments.remove(tx,school,e.auth,body);
         else result=adjustments.close(tx,school,e.auth,body);
       }else if(action==='period-settings'){
@@ -45,7 +51,7 @@ routerAdd('POST', '/api/billing', (e) => {
         const invoiceDate=String(body.invoice_date||period.invoice_date);if(!lib.validDate(invoiceDate))throw new Error('Choose a valid invoice date.');
         const number='TLE'+start.replace(/-/g,'');if(tx.findRecordsByFilter('invoices','number = {:number}','',1,0,{number}).length)throw new Error('Invoice number already exists.');
         for(const [k,v]of Object.entries({daycare:schoolId,school_name:school.getString('name'),month:start.slice(0,7),show_payment_terms:true,billing_cycle:'biweekly',period_start:start,period_end:period.period_end,due_date:period.due_date,invoice_date:invoiceDate,number,status:'draft',daily_counts:plan.counts,notes:'Payment due by '+lib.displayDate(period.due_date)+'.',generated_notes:plan.notes}))invoice.set(k,v);
-        const extras=requests().filter(r=>r.getString('kind')==='lunch'&&r.getString('status')==='approved'&&!r.getString('invoice_id')&&r.getString('service_date')<=period.period_end&&!isClosedDate(r.getString('service_date')));
+        const extras=requests().filter(r=>r.getString('kind')==='lunch'&&r.getString('status')==='approved'&&!r.getString('invoice_id')&&!r.getBool('billing_deferred')&&r.getString('service_date')<=period.period_end&&!isClosedDate(r.getString('service_date')));
         const lines=[...plan.lines,...extras.map(requestLine)];if(!lines.length)lines.push({description:'Lunch Catering',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true,baseline:true});
         invoice.set('billing_snapshot',invoiceReference(invoice));putTotals(invoice,lines);require(__hooks+'/audit-lib.js').save(tx,invoice,e.auth);for(const r of extras){r.set('invoice_id',invoice.id);require(__hooks+'/audit-lib.js').save(tx,r,e.auth)}
         if(!school.getString('billing_anchor')){school.set('billing_anchor',start);require(__hooks+'/audit-lib.js').save(tx,school,e.auth)}result=plain(invoice);
@@ -72,6 +78,11 @@ routerAdd('POST', '/api/billing', (e) => {
         require(__hooks+'/audit-lib.js').save(tx,r,e.auth);created.push(plain(r))
         }
         result=Array.isArray(body.service_dates)?{created:created.length,requests:created}:created[0]
+      } else if(action==='archive-request') {
+        if(!clc)throw new Error('Only CLC superadmins can archive or restore notes and requests.');
+        const r=tx.findRecordById('lunch_requests',String(body.id||''));if(r.getString('daycare')!==schoolId||r.getString('status')==='deleted')throw new Error('Choose a note or request in this school.');
+        if(typeof body.archived!=='boolean')throw new Error('Choose Archive or Restore.');
+        r.set('archived',body.archived);require(__hooks+'/audit-lib.js').save(tx,r,e.auth);result={message:body.archived?'Entry archived. Lunch service and billing are unchanged.':'Entry restored.'};
       } else if(action==='delete-request') {
         if(!clc)throw new Error('Only CLC admins can delete one-off requests.');
         const r=tx.findRecordById('lunch_requests',String(body.id||''));if(r.getString('daycare')!==schoolId||r.getString('kind')!=='lunch')throw new Error('Choose a one-off request in this school.');
@@ -80,7 +91,7 @@ routerAdd('POST', '/api/billing', (e) => {
       } else if(action==='approve-all-requests') {
         if(!clc)throw new Error('CLC approval is required.');
         const ids=Array.isArray(body.ids)?[...new Set(body.ids.map(String))]:[];
-        const pending=requests().filter(r=>r.getString('kind')==='lunch'&&r.getString('status')==='pending');
+        const pending=requests().filter(r=>r.getString('kind')==='lunch'&&r.getString('status')==='pending'&&!r.getBool('archived'));
         if(!ids.length||ids.length!==pending.length||pending.some(r=>!ids.includes(r.id)))throw new Error('The pending requests changed. Refresh, review the count, and approve again.');
         for(const r of pending)require(__hooks+'/lunch-request-lib.js').approve(tx,r,school,e.auth);
         result={approved:pending.length,message:pending.length+' one-off lunch requests approved.'};
@@ -116,7 +127,7 @@ routerAdd('POST', '/api/billing', (e) => {
         const alreadyIssued=tx.findRecordsByFilter('invoices','daycare = {:school} && month = {:month} && (status = "issued" || status = "closed")','',1,0,{school:schoolId,month}).length>0
         const plan=lib.monthlyPlan(plain(school),h,m,month);counts.push(...plan.counts)
         const lines=alreadyIssued?[]:plan.lines
-        const extras=requests().filter(r=>{if(r.getString('kind')!=='lunch'||r.getString('status')!=='approved'||r.getString('invoice_id')||r.getString('service_date')>counts[counts.length-1].date||isClosedDate(r.getString('service_date')))return false;const day=lib.daily(plain(school),h,m,r.getString('service_date'));return !day.closed && !day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase())})
+        const extras=requests().filter(r=>{if(r.getString('kind')!=='lunch'||r.getString('status')!=='approved'||r.getString('invoice_id')||r.getBool('billing_deferred')||r.getString('service_date')>counts[counts.length-1].date||isClosedDate(r.getString('service_date')))return false;const day=lib.daily(plain(school),h,m,r.getString('service_date'));return !day.closed && !day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase())})
         for(const r of extras)lines.push(requestLine(r))
         if(!lines.length)lines.push({description:lib.monthLabel(month)+(alreadyIssued?' Additional Adjustment':' Lunch Catering'),quantity:0,rate:school.getFloat('invoice_rate'),taxable:true})
         const slug=school.getString('public_slug'),prefix=slug==='lightbridge-bergenfield'?'BF':slug==='lightbridge-fort-lee'?'FL':slug==='tle-englewood-cliffs'?'TLE':'INV'
@@ -128,16 +139,16 @@ routerAdd('POST', '/api/billing', (e) => {
       } else if(action==='recalculate') {
         if(!clc)throw new Error('CLC access is required.');const invoice=checkInvoice(body.id);if(invoice.getString('status')!=='draft')throw new Error('Only drafts can be recalculated.');
         if(invoice.getString('billing_cycle')==='biweekly'){
-          const plan=biweeklyLines(invoice.getString('period_start'),invoice.getString('period_end'));
+          const plan=biweeklyLines(invoice.getString('period_start'),invoice.getString('period_end'));require(__hooks+'/invoice-controls.js').sync(invoice,plan.lines);
           const manual=JSON.parse(invoice.getString('lines')||'[]').filter(l=>!l.baseline&&!l.request_id&&l.adjustment_type!=='schedule');
           const auto=autoRequests(invoice).map(requestLine);
-          const lines=[...plan.lines,...manual,...auto];if(!lines.length)lines.push({description:'Lunch Catering',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true,baseline:true});
+          const lines=[...require(__hooks+'/invoice-controls.js').filter(invoice,plan.lines),...manual,...auto];if(!lines.length)lines.push({description:'Lunch Catering',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true,baseline:true});
           invoice.set('billing_snapshot',invoiceReference(invoice));putTotals(invoice,lines);invoice.set('daily_counts',plan.counts);adjustments.notes(invoice,plan.notes);require(__hooks+'/audit-lib.js').save(tx,invoice,e.auth);result=plain(invoice);return;
         }
-        const month=invoice.getString('month'),plan=lib.monthlyPlan(plain(school),history(),menus(),month);
+        const month=invoice.getString('month'),plan=lib.monthlyPlan(plain(school),history(),menus(),month);require(__hooks+'/invoice-controls.js').sync(invoice,plan.lines);
         const issued=tx.findRecordsByFilter('invoices','daycare = {:school} && month = {:month} && (status = "issued" || status = "closed")','',1,0,{school:schoolId,month}).length>0;
         const saved=JSON.parse(invoice.getString('lines')||'[]'),manual=saved.filter(line=>!line.request_id && line.adjustment_type!=='schedule' && !line.baseline && !line.description.startsWith(month+' Lunch Catering') && line.description!==month+' Additional Adjustment' && line.description!==lib.monthLabel(month)+' Additional Adjustment');
-        const auto=autoRequests(invoice).map(requestLine),lines=[...(issued?[]:plan.lines),...manual,...auto];
+        const auto=autoRequests(invoice).map(requestLine),lines=[...(issued?[]:require(__hooks+'/invoice-controls.js').filter(invoice,plan.lines)),...manual,...auto];
         if(!lines.length)lines.push({description:month+' Additional Adjustment',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true});
         invoice.set('billing_snapshot',issued?correctionReference(invoice):invoiceReference(invoice));putTotals(invoice,lines);invoice.set('daily_counts',issued?[]:plan.counts);invoice.set('generated_notes',(issued?'Adjustment invoice. Monthly scheduled lunches were already invoiced.':plan.notes)+(auto.length?'\n'+auto.map(line=>line.description+': +'+line.quantity+' meals.').join('\n'):''));adjustments.notes(invoice);require(__hooks+'/audit-lib.js').save(tx,invoice,e.auth);result=plain(invoice);
       } else if(action==='save'||action==='issue'||action==='delete') {
@@ -153,7 +164,7 @@ routerAdd('POST', '/api/billing', (e) => {
           // Auto-adjustments cannot be removed or converted to manual lines.
           if(!Array.isArray(body.lines))throw new Error('Invoice lines are required.')
           const savedLines=JSON.parse(invoice.getString('lines')||'[]'),protectedLines=savedLines.filter(l=>l.pending_source||l.adjustment_type==='carry');
-          const manual=body.lines.filter(line=>!line.request_id&&!line.pending_source&&line.adjustment_type!=='carry');
+          const manual=require(__hooks+'/invoice-controls.js').filter(invoice,body.lines).filter(line=>!line.request_id&&!line.pending_source&&line.adjustment_type!=='carry');
           for(const line of manual){for(const key of Object.keys(line))if(key.startsWith('pending_')||key.startsWith('carry_'))delete line[key];}
           manual.push(...protectedLines);
           const auto=autoRequests(invoice).map(requestLine);putTotals(invoice,[...manual,...auto]);

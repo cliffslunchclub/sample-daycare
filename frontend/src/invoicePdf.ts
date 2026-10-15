@@ -1,4 +1,5 @@
-export type InvoiceLine = { description: string; quantity: number; rate: number; taxable: boolean; amount_cents?: number; request_id?: string; adjustment_type?: string; baseline?: boolean; pending_source?: string; pending_unit?: string; pending_request?: string; service_dates?: string[]; carry_source?: string; carry_date?: string; carry_snapshot?: {quantity:number;rate:number} };
+import { invoiceRows } from './invoiceLines.ts';
+export type InvoiceLine = { description: string; quantity: number; rate: number; taxable: boolean; amount_cents?: number; request_id?: string; request_student?: string; request_label?: string; pending_label?: string; pending_number?: string; adjustment_type?: string; baseline?: boolean; pending_source?: string; pending_unit?: string; pending_request?: string; service_dates?: string[]; carry_source?: string; carry_date?: string; carry_snapshot?: {quantity:number;rate:number} };
 export type Invoice = { id: string; daycare: string; school_name: string; number: string; month: string; invoice_date: string; billing_cycle?: string; period_start?: string; period_end?: string; due_date?: string; show_payment_terms?: boolean; shared?: boolean; status: string; notes: string; generated_notes?: string; closed_snapshot?: { source_file?: string; recovered_reference?: string }; lines: InvoiceLine[]; daily_counts: {date: string; quantity: number; rate: number; closed: boolean}[]; subtotal_cents: number; tax_cents: number; total_cents: number };
 export const showInvoiceTerms = (invoice: Invoice) => invoice.show_payment_terms ?? (invoice.billing_cycle === 'biweekly' || !!invoice.due_date);
 export const money = (cents: number) => new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(cents/100);
@@ -45,8 +46,8 @@ export function invoicePdf(invoice:Invoice):Blob {
     if(table)tableHeader();
   }
   newPage(true,true);
-  invoice.lines.forEach((item,index)=>{
-    const product=item.baseline?'School Lunch Catering':item.request_id?'One-off Lunch':item.adjustment_type==='carry'?'Schedule Adjustment':['schedule','pending'].includes(item.adjustment_type||'')?'Schedule Adjustment':'Additional Item';
+  invoiceRows(invoice.lines).forEach(({line:item},index)=>{
+    const product=item.baseline?'School Lunch Catering':(item.request_id||item.pending_request)?'One-off Lunch':item.adjustment_type==='carry'?'Schedule Adjustment':['schedule','pending'].includes(item.adjustment_type||'')?'Schedule Adjustment':'Additional Item';
     let rows=wrap(item.description+(item.taxable?'':' (non-taxable)'),185,9),firstPart=true;
     while(rows.length){
       if(y<96)newPage(false,true);
