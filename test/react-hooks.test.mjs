@@ -78,7 +78,7 @@ test('notes and roster use distinct sibling keys during search updates', async (
   const component = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'SchoolStudentsPage');
   const js = ts.transpileModule(component.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
   const { runInNewContext } = await import('node:vm');
-  const context = { PageTitle:'title', Empty:'empty', NotesRequests:'notes', CountSettings:'counts', StudentsPage:'roster', CollapsiblePanel:'panel', React:{createElement:(type,props,...children)=>({type,props,children})} };
+  const context = { useState:initial=>[initial,()=>{}], WeeklyRoster:'weekly', PageTitle:'title', Empty:'empty', NotesRequests:'notes', CountSettings:'counts', StudentsPage:'roster', CollapsiblePanel:'panel', React:{createElement:(type,props,...children)=>({type,props,children})} };
   runInNewContext(js,context);
   const tree=context.SchoolStudentsPage({subs:[],current:{id:'school',count_mode:'roster',operations_enabled:true},isClc:true,students:[],classrooms:[]});
   const keys=tree.children.filter(child=>child && child.props?.key).map(child=>child.props.key);
