@@ -185,6 +185,16 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
     } catch (e) { if (version === loadVersion.current && pb.authStore.model?.id === accountId) setError(message(e)); }
     finally { if (version === loadVersion.current) setBusy(false); }
   }
+  async function refreshMenus() {
+    setMenuDays(await pb.collection('menu_days').getFullList<MenuDay>({ sort: 'service_date', requestKey: null }));
+  }
+  function mergeMenus(records: MenuDay[]) {
+    setMenuDays(previous => {
+      const byId = new Map(previous.map(row => [row.id, row]));
+      records.forEach(record => byId.set(record.id, record));
+      return [...byId.values()];
+    });
+  }
   useEffect(() => {
     let active = true;
     setSchoolAccess(null);
@@ -300,7 +310,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
       {tab === 'summary' && isClc && <section className="page-stack"><PageTitle title="Weekly Summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print Landscape Summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /><DatedKitchenCounts schools={daycares.filter((d) => selected === 'all' || d.id === selected)} /></section>}
       {tab === 'menu' && !isClc && current && <PublicMenu slug={current.public_slug} embedded />}
       {tab === 'overview' && isClc && <MenuOverview daycares={daycares} menuDays={menuDays} month={month} setMonth={setMonth} />}
-      {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefresh={load} error={setError} />}
+      {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefreshMenus={refreshMenus} onMenusSaved={mergeMenus} error={setError} />}
       {tab === 'items' && isClc && <MenuItemsPage items={menuItems} onRefresh={load} error={setError} />}
       {tab === 'users' && isClc && <SchoolAdminsPage daycares={daycares} error={setError} />}
       {tab === 'locations' && isClc && <LocationsPage daycares={daycares} onCreate={createDaycare} onAddAdmin={addAdmin} onSave={saveDaycare} onRefresh={load} />}
@@ -480,7 +490,7 @@ function MenuOverview({ daycares, menuDays, month, setMonth }: { daycares: Dayca
   </section>;
 }
 
-function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menuDays, onRefresh, error }: { menuItems: MenuItem[]; current: Daycare | null; daycares: Daycare[]; month: string; setMonth: (m: string) => void; menuDays: MenuDay[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
+function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menuDays, onRefreshMenus, onMenusSaved, error }: { menuItems: MenuItem[]; current: Daycare | null; daycares: Daycare[]; month: string; setMonth: (m: string) => void; menuDays: MenuDay[]; onRefreshMenus: () => Promise<void>; onMenusSaved: (records: MenuDay[]) => void; error: (s: string) => void }) {
   const [drafts, setDrafts] = useState<Record<string, Partial<MenuDay>>>({});
   const [copyTarget, setCopyTarget] = useState('');
   const [copying, setCopying] = useState(false);
@@ -514,20 +524,34 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     if (!location || !date.startsWith(month)) return;
     const value = valueFor(date); const saved = menuDays.find((d) => d.daycare === location.id && dateOnly(d.service_date) === date);
     const data = { menu_item: catalog.find((item) => item.name === value.menu)?.id || '', daycare: location.id, daycare_name: location.name, public_slug: location.public_slug, service_date: `${date} 00:00:00.000Z`, menu: value.menu || '', note: value.note || '', closed: Boolean(value.closed), published: publish || Boolean(value.published) };
-    if (saved) await pb.collection('menu_days').update(saved.id, data); else await pb.collection('menu_days').create(data);
+    const record = saved ? await pb.collection('menu_days').update<MenuDay>(saved.id, data) : await pb.collection('menu_days').create<MenuDay>(data);
     setDrafts((previous) => { const next = { ...previous }; delete next[keyFor(date)]; return next; });
+    return record;
   }
   async function saveDays(days: string[], publish = false) {
     if (!location || savingRef.current) return;
-    savingRef.current = true; setSaving(true); setSaveNotice('');
-    let completed = 0;
+    savingRef.current = true; setSaving(true); setSaveNotice(''); error('');
+    const pending = days.filter(date => {
+      const saved = menuDays.find(day => day.daycare === location.id && dateOnly(day.service_date) === date);
+      return !saved || Boolean(drafts[keyFor(date)]) || (publish && !saved.published);
+    });
+    const completed: MenuDay[] = [];
+    let currentDate = '';
     try {
-      for (const date of days) { await persistDay(date, publish); completed++; }
-      setSaveNotice(`${publish ? 'Published' : 'Saved'} ${completed} ${completed === 1 ? 'day' : 'days'} for ${location.name}, ${monthLabel(month)}.`);
+      for (const date of pending) {
+        currentDate = date;
+        const record = await persistDay(date, publish);
+        if (record) completed.push(record);
+      }
+      setSaveNotice(pending.length
+        ? `${publish ? 'Published' : 'Saved'} ${pending.length} days for ${location.name}, ${monthLabel(month)}. ${days.length - pending.length} already up to date.`
+        : `All ${days.length} days are already ${publish ? 'public' : 'saved'}.`);
     } catch (err) {
-      error(`Saved ${completed} of ${days.length} days. Remaining edits are kept; try again. ${message(err)}`);
+      const status = typeof err === 'object' && err && 'status' in err ? Number(err.status) : 0;
+      error(`Saved ${completed.length} of ${pending.length} pending days. Failed on ${invoiceDate(currentDate)}${status ? ` (HTTP ${status})` : ''}. Retry will preserve successful saves. ${message(err)}`);
     } finally {
-      try { await onRefresh(); } finally { savingRef.current = false; setSaving(false); }
+      if (completed.length) onMenusSaved(completed);
+      savingRef.current = false; setSaving(false);
     }
   }
   async function saveDay(date: string) { await saveDays([date]); }
@@ -541,7 +565,7 @@ function MenuPage({ menuItems: catalog, current, daycares, month, setMonth, menu
     try {
       const result = await pb.send('/api/clone-menu', { method: 'POST', body: { source: location.id, target: target.id, month } });
       setDrafts((previous) => Object.fromEntries(Object.entries(previous).filter(([key]) => !key.startsWith(`${target.id}:${month}`))));
-      await onRefresh(); setCopyNotice(`Copied ${result.copied} days to ${target.name} as unpublished drafts.`);
+      await onRefreshMenus(); setCopyNotice(`Copied ${result.copied} days to ${target.name} as unpublished drafts.`);
     } catch (err) { error(message(err)); } finally { setCopying(false); }
   }
   function exportHtml() {
