@@ -151,6 +151,20 @@ try:
  assert len([item for item in billing({'action':'pending-adjustments'})['items'] if item.get('request_id') in [r['id'] for r in group]])==2
  billing({'action':'dismiss-pending','items':items});assert not any(item.get('request_id') in [r['id'] for r in group] for item in billing({'action':'pending-adjustments'})['items'])
  assert all(get('lunch_requests',r['id'])['status']=='approved' for r in group)
+ # Archive All is scoped, guards a stale confirmation, and does not alter service or invoices.
+ filter_all='daycare="'+a['id']+'"';active=[r for r in req('GET','/api/collections/lunch_requests/records?perPage=500&filter='+urllib.parse.quote(filter_all),token=clc)['items'] if not r.get('archived') and r['status']!='deleted']
+ active_ids=[r['id'] for r in active];assert active_ids
+ invoice_before=get('invoices',jan['id']);counts_before=billing({'action':'counts','start':'2027-01-04','end':'2027-01-08'})
+ req('POST','/api/billing',{'daycare':a['id'],'action':'archive-all-requests','ids':active_ids},staff,400)
+ req('POST','/api/billing',{'daycare':b['id'],'action':'archive-all-requests','ids':active_ids},clc,400)
+ req('POST','/api/billing',{'daycare':a['id'],'action':'archive-all-requests','ids':active_ids[:-1]},clc,400)
+ assert all(not get('lunch_requests',r['id']).get('archived') for r in active)
+ result=billing({'action':'archive-all-requests','ids':active_ids});assert result['archived']==len(active_ids)
+ assert all(get('lunch_requests',r['id'])['archived'] and get('lunch_requests',r['id'])['status']==r['status'] for r in active)
+ assert get('invoices',jan['id'])['lines']==invoice_before['lines'] and get('invoices',jan['id'])['total_cents']==invoice_before['total_cents']
+ assert billing({'action':'counts','start':'2027-01-04','end':'2027-01-08'})==counts_before
+ billing({'action':'archive-request','id':active_ids[0],'archived':False});assert not get('lunch_requests',active_ids[0])['archived']
+ print('PASS Archive All: superadmin-only, school scope, stale count protection, all entry statuses, unchanged kitchen counts and invoices, individual restore',flush=True)
  print('PASS grouped pending dismissal: all members hidden together, stale groups make no changes, lunches remain approved',flush=True)
  print('PASS additional controls: atomic grouped removal, unchanged kitchen lunches, school-role denial, deferred negative adjustments and dismissal across invoice close',flush=True)
  print('PASS controls: superadmin scoped archive/restore, unchanged lunches and invoices, one-off removal/defer/dismiss/reapply, schedule removal/recalculate/restore/close, immutable closed totals and manual pending corrections',flush=True)

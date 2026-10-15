@@ -78,6 +78,13 @@ routerAdd('POST', '/api/billing', (e) => {
         require(__hooks+'/audit-lib.js').save(tx,r,e.auth);created.push(plain(r))
         }
         result=Array.isArray(body.service_dates)?{created:created.length,requests:created}:created[0]
+      } else if(action==='archive-all-requests') {
+        if(!clc)throw new Error('Only CLC superadmins can archive notes and requests.');
+        const active=requests().filter(r=>!r.getBool('archived')&&r.getString('status')!=='deleted');
+        const ids=Array.isArray(body.ids)?body.ids.map(String):[];
+        if(!ids.length||new Set(ids).size!==ids.length||ids.length!==active.length||active.some(r=>!ids.includes(r.id)))throw new Error('The active entries changed. Refresh, review the count, and archive again. Nothing was archived.');
+        for(const r of active){r.set('archived',true);require(__hooks+'/audit-lib.js').save(tx,r,e.auth);}
+        result={archived:active.length,message:active.length+' notes and requests archived. Lunch service and billing are unchanged.'};
       } else if(action==='archive-request') {
         if(!clc)throw new Error('Only CLC superadmins can archive or restore notes and requests.');
         const r=tx.findRecordById('lunch_requests',String(body.id||''));if(r.getString('daycare')!==schoolId||r.getString('status')==='deleted')throw new Error('Choose a note or request in this school.');
