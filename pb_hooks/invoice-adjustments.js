@@ -26,7 +26,7 @@ function apply(app,school,actor,body){
  const available=list(app,school),start=calc.period(plain(target)).start,chosen=[];
  for(const item of selected){const row=available.find(r=>r.id===item.id);if(!row||row.token!==item.token)throw new Error('These adjustments changed or were already applied. Refresh and review them again. Nothing was added.');if(row.source_end>=start)throw new Error('Choose a draft for a later service period.');chosen.push(row);}
  const lines=JSON.parse(target.getString('lines')||'[]');
- for(const r of chosen){lines.push({description:r.description,quantity:r.quantity,rate:r.rate,taxable:true,adjustment_type:'pending',pending_source:r.source_id,pending_unit:r.unit,pending_from:r.previous_quantity,pending_to:r.current_quantity,pending_dates:r.current_dates,pending_at:new Date().toISOString(),pending_request:r.request_id||'',service_dates:r.service_dates});if(r.request_id){const request=app.findRecordById('lunch_requests',r.request_id);if(!request.getString('invoice_id')){request.set('invoice_id',target.id);require(__hooks+'/audit-lib.js').save(app,request,actor);}}}
+ for(const r of chosen){lines.push({description:r.description,quantity:r.quantity,rate:r.rate,taxable:true,adjustment_type:'pending',pending_source:r.source_id,pending_unit:r.unit,pending_entity:r.entity,pending_label:r.label,pending_from:r.previous_quantity,pending_to:r.current_quantity,pending_dates:r.current_dates,pending_at:new Date().toISOString(),pending_request:r.request_id||'',service_dates:r.service_dates});if(r.request_id){const request=app.findRecordById('lunch_requests',r.request_id);if(!request.getString('invoice_id')){request.set('invoice_id',target.id);require(__hooks+'/audit-lib.js').save(app,request,actor);}}}
  totals(app,target,lines,actor);return plain(target);
 }
 function remove(app,school,actor,body){
@@ -58,4 +58,26 @@ function ensure(app){
   require(__hooks+'/invoice-reference-recovery.js').recover(tx);
  });
 }
-module.exports={plain,data,snapshot,list,closedDate,notes,apply,remove,close,ensure};
+function currentValues(app,school){
+ const d=data(app,school),values={};
+ for(const source of d.invoices.filter(i=>i.status==='closed'&&i.closed_snapshot?.reference&&!i.closed_snapshot.reference.correction_only)){
+  const ref=source.closed_snapshot.reference,current=calc.capture(d.school,d.history,d.menus,ref.start,ref.end);
+  if(ref.aggregate){const units={};for(const u of Object.values(current.units)){const id=calc.key('school',u.rate);if(!units[id])units[id]={quantity:0};units[id].quantity+=u.quantity;}current.units=units;}
+  const units={...current.units,...calc.requestUnits(ref,d.requests,d.school,d.history,d.menus)};
+  for(const id of new Set([...Object.keys(ref.units||{}),...Object.keys(ref.requests||{}),...Object.keys(units)]))values[source.id+'::'+id]=Number(units[id]?.quantity||0);
+ }
+ return values;
+}
+function resetUndoDrafts(app,school,before,actor){
+ const after=currentValues(app,school),changed=new Set([...new Set([...Object.keys(before),...Object.keys(after)])].filter(key=>Number(before[key]||0)!==Number(after[key]||0)));let removed=0;
+ for(const invoice of app.findRecordsByFilter('invoices','daycare = {:school} && status = "draft"','',0,0,{school:school.id})){
+  const lines=JSON.parse(invoice.getString('lines')||'[]'),affected=lines.filter(l=>l.pending_source&&changed.has(l.pending_source+'::'+l.pending_unit));if(!affected.length)continue;
+  const remaining=lines.filter(l=>!affected.includes(l));
+  for(const line of affected)if(line.pending_request&&!remaining.some(l=>l.pending_request===line.pending_request)){
+   const request=app.findRecordById('lunch_requests',line.pending_request);if(request.getString('invoice_id')===invoice.id){request.set('invoice_id','');require(__hooks+'/audit-lib.js').save(app,request,actor);}
+  }
+  removed+=affected.length;totals(app,invoice,remaining,actor);
+ }
+ return removed;
+}
+module.exports={plain,data,snapshot,list,closedDate,notes,apply,remove,close,ensure,currentValues,resetUndoDrafts};

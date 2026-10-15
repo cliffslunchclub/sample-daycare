@@ -29,6 +29,7 @@ export function auditValue(value:any,key='',row:Row={},refs:AuditReferences={},s
 }
 function value(row:Row,key:string,side:'before'|'after',refs:AuditReferences){return auditValue(row.changes?.[key]?.[side],key,row,refs,side);}
 export function auditSummary(row:Row,refs:AuditReferences={}):string{
+ if(row.changes?.__undo?.summary)return row.changes.__undo.summary;
  const changes=row.changes||{},side=row.action==='delete'?'before':'after',meta=changes.__display?.[side]||{};
  const live=refs[`${row.entity_type}:${row.entity_id}:${row.daycare}`]||refs[`${row.entity_type}:${row.entity_id}`];const context=live && String(live.daycare||'')===String(row.daycare||'')?live:{};
  const ownLabel=row.entity_label&&row.entity_label!==row.entity_id&&!/^\d{4}-\d{2}/.test(row.entity_label)?row.entity_label:'';

@@ -22,13 +22,13 @@ function requestUnits(snapshot,requests,school,history,menus){
 function pending(source,current,requests,invoices){
  const reference=source.closed_snapshot?.reference;if(!reference)return [];
  const old={...reference.units,...(reference.requests||{})},now={...current.units,...requests};
- const applied={},accountedDates={},dateVersions={};for(const invoice of invoices)if(invoice.id!==source.id)for(const line of invoice.lines||[]){
-  if(line.pending_source===source.id&&line.pending_unit){applied[line.pending_unit]=(applied[line.pending_unit]||0)+Number(line.quantity);if(line.pending_dates&&String(line.pending_at||'')>=String(dateVersions[line.pending_unit]||'')){accountedDates[line.pending_unit]=line.pending_dates;dateVersions[line.pending_unit]=line.pending_at||'';}}
+ const applied={},accountedDates={},dateVersions={},appliedUnits={};for(const invoice of invoices)if(invoice.id!==source.id)for(const line of invoice.lines||[]){
+  if(line.pending_source===source.id&&line.pending_unit){applied[line.pending_unit]=(applied[line.pending_unit]||0)+Number(line.quantity);const entity=line.pending_entity||line.pending_unit.split('|')[0];appliedUnits[line.pending_unit]={entity,label:line.pending_label||(line.description||'').match(/: (.+?) - /)?.[1]||(entity==='school'?'School counts':'Student'),rate:Number(line.rate),quantity:0,dates:line.pending_dates||line.service_dates||[],request_id:line.pending_request||undefined};if(line.pending_dates&&String(line.pending_at||'')>=String(dateVersions[line.pending_unit]||'')){accountedDates[line.pending_unit]=line.pending_dates;dateVersions[line.pending_unit]=line.pending_at||'';}}
   // Earlier TLE carry-forward lines already billed must not be billed twice.
   else if(line.carry_source===source.id){const id=key('school',line.rate);applied[id]=(applied[id]||0)+Number(line.quantity);}
  }
  return [...new Set([...Object.keys(old),...Object.keys(now),...Object.keys(applied)])].sort().flatMap(id=>{
-  const a=old[id],b=now[id],unit=b||a;if(!unit)return [];
+  const a=old[id],b=now[id],unit=b||a||appliedUnits[id];if(!unit)return [];
   const billed=Number(a?.quantity||0)+Number(applied[id]||0),scheduled=Number(b?.quantity||0),quantity=scheduled-billed;if(!quantity)return [];
   const previousDates=accountedDates[id]||a?.dates||[],changedDates=[...new Set([...previousDates,...(b?.dates||[])])].filter(date=>previousDates.includes(date)!==(b?.dates||[]).includes(date)).sort();
   const dates=changedDates.length===Math.abs(quantity)?changedDates:[];

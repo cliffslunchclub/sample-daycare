@@ -276,3 +276,7 @@
 @media(max-width:640px) { .saved-subs .list-row { flex-wrap:wrap; } .substitution-edit-form,.substitution-edit-form label { width:100%; } }
 
 .student-form-fields { border:0; padding:0; margin:0; min-width:0; display:grid; gap:1rem; }
+
+.undo-audit-dialog { width:min(900px,94vw); max-width:94vw; }
+.undo-audit-dialog pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; margin:0; }
+.undo-audit-dialog .button-row { margin-top:1rem; }

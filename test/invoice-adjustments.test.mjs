@@ -49,3 +49,9 @@ test('the supplied emailed reference reconciles its original roster and all four
  assert.equal(source.lines[3].quantity,-44);assert.equal(source.lines[1].quantity,4);assert.equal(source.lines[2].quantity,-6);
  assert.match(source.sha256,/^[a-f0-9]{64}$/);
 });
+
+test('removing a later-added student keeps a credit pending after the addition was already billed',()=>{
+ const source={id:'oct',number:'BF1026',closed_snapshot:{reference:{start:'2026-10-01',end:'2026-10-31',units:{}}}};
+ const applied={id:'nov',status:'closed',lines:[{description:'Schedule correction for BF1026: New Student - 10-20-2026, 10-27-2026 (+2 meals)',pending_source:'oct',pending_unit:'student:new|400',quantity:2,rate:4,pending_dates:['2026-10-20','2026-10-27'],pending_at:'2026-10-15T13:00:00Z'}]};
+ const pending=calc.pending(source,{units:{}},{},[applied]);assert.equal(pending.length,1);assert.equal(pending[0].quantity,-2);assert.equal(pending[0].label,'New Student');assert.equal(pending[0].amount_cents,-800);
+});

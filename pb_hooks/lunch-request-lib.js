@@ -7,7 +7,7 @@ function line(app,school,r){
  const included=!day.closed&&!day.roster.some(k=>k.id===r.getString('student')||String(k.name||'').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase());
  return {description:'One-off lunch: '+r.getString('student_label')+' ('+lib.displayDate(r.getString('service_date'))+')',quantity:included?1:0,rate:day.rate,taxable:true,request_id:r.id};
 }
-function remove(app,r,school,actor){
+function remove(app,r,school,actor,options={}){
  const lib=require(__hooks+'/billing-lib.js'),audit=require(__hooks+'/audit-lib.js');let issued=false;
  if(r.getString('invoice_id')){
   const invoice=app.findRecordById('invoices',r.getString('invoice_id'));
@@ -22,9 +22,9 @@ function remove(app,r,school,actor){
    require(__hooks+'/invoice-adjustments.js').notes(invoice);audit.save(app,invoice,actor);r.set('invoice_id','');
   }
  }
- r.set('status','deleted');audit.save(app,r,actor);return issued;
+ r.set('status','deleted');if(options.silent)app.save(r);else audit.save(app,r,actor);return issued;
 }
-function approve(app,r,school,actor){
+function approve(app,r,school,actor,options={}){
  if(r.getString('daycare')!==school.id||r.getString('kind')!=='lunch'||r.getString('status')!=='pending')throw new Error('Only pending lunch requests in this school can be approved.');
  const adjustment=line(app,school,r);
  if(!adjustment.quantity)throw new Error('Review '+r.getString('student_label')+' on '+require(__hooks+'/billing-lib.js').displayDate(r.getString('service_date'))+': no lunch service or the student is already scheduled. No requests were approved.');
@@ -40,6 +40,6 @@ function approve(app,r,school,actor){
   const sum=require(__hooks+'/billing-lib.js').totals(lines);for(const key of Object.keys(sum))invoice.set(key,sum[key]);
   invoice.set('generated_notes',invoice.getString('generated_notes')+'\n'+adjustment.description+': +1 meal.');require(__hooks+'/audit-lib.js').save(app,invoice,actor);r.set('invoice_id',invoice.id);
  }
- r.set('status','approved');require(__hooks+'/audit-lib.js').save(app,r,actor);
+ r.set('status','approved');if(options.silent)app.save(r);else require(__hooks+'/audit-lib.js').save(app,r,actor);
 }
 module.exports={line,remove,approve};
