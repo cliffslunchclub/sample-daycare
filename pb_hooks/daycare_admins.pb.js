@@ -1,7 +1,7 @@
 routerAdd("GET", "/api/public-schools", (e) => {
   try {
     const schools = $app.findRecordsByFilter("daycares", "active = true", "name", 200, 0)
-    return e.json(200, schools.map((school) => ({ name: school.getString("name"), public_slug: school.getString("public_slug"), substitution_options: school.getBool("allow_substitutions") ? { A: school.getString("sub_a_label"), B: school.getString("sub_b_label"), C: school.getString("sub_c_label"), V: school.getString("sub_v_label") } : null })))
+    return e.json(200, schools.map((school) => ({ name: school.getString("name"), public_slug: school.getString("public_slug"), sub_option_names: JSON.parse(school.getString("sub_option_names") || "{}"), substitution_options: school.getBool("allow_substitutions") ? { A: school.getString("sub_a_label"), B: school.getString("sub_b_label"), C: school.getString("sub_c_label"), V: school.getString("sub_v_label") } : null })))
   } catch (err) {
     return e.json(500, { message: "Could not load schools." })
   }

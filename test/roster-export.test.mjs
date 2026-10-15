@@ -10,5 +10,7 @@ test('roster exports active students in the selected school with weekday substit
  const xml=new TextDecoder().decode(await rosterExcel('School',rows).arrayBuffer());
  assert.match(xml,/dataValidation type="list"/);
  assert.match(xml,/conditionalFormatting/);
- assert.match(xml,/Yes,No,Sub A,Sub B,Sub C,Sub V/);
+ assert.match(xml,/<formula1>LunchOptions<\/formula1>/);
+ assert.match(xml,/Options!\$A\$1:\$A\$6/);
+ for (const label of ['Yes','No','Sub A','Sub B','Sub C','Sub V']) assert.ok(xml.includes(`<t>${label}</t>`));
 });

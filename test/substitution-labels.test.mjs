@@ -1,0 +1,30 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import ts from '../frontend/node_modules/typescript/lib/typescript.js';
+import { substitutionName } from '../frontend/src/substitutionLabels.ts';
+import { rosterRows, rosterExcel, rosterHtml } from '../frontend/src/rosterExport.ts';
+test('renamed substitutions preserve assignment keys and export arbitrary label text safely', async()=>{
+ const names={A:'Tuesday & <rice>, special'};
+ assert.equal(substitutionName({sub_option_names:names},'A'),names.A);
+ assert.equal(substitutionName({},'V'),'V');
+ const rows=rosterRows([{id:'kid',name:'Student',classroom:'room',daycare:'school',active:true,service_days:['Tuesday']}],[{id:'room',name:'Room'}],[{student:'kid',daycare:'school',weekday:'Tuesday',recurring:true,code:'A'}],'school',false,names);
+ assert.equal(rows[0][3],'Sub '+names.A);
+ assert.match(rosterHtml('School',rows),/Sub Tuesday &amp; &lt;rice&gt;, special/);
+ const xml=new TextDecoder().decode(await rosterExcel('School',rows,names).arrayBuffer());
+ assert.match(xml,/name="LunchOptions"/);assert.match(xml,/Sub Tuesday &amp; &lt;rice&gt;, special/);
+ assert.match(xml,/Target="worksheets\/sheet2.xml"/);
+});
+test('legend blur saves the display name only, reports success and reports failures', async()=>{
+ const source=ts.createSourceFile('Editor.tsx',readFileSync(new URL('../frontend/src/SubstitutionLegendEditor.tsx',import.meta.url),'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const fn=source.statements.find(n=>ts.isFunctionDeclaration(n)&&n.name?.text==='LegendOption');
+ const js=ts.transpileModule(fn.getText(source),{compilerOptions:{target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}}).outputText;
+ let fail=false,refreshes=0;const calls=[],statuses=[];
+ const context={Error,substitutionName,useState:init=>[init,value=>statuses.push(value)],pb:{send:async(path,args)=>{calls.push({path,args});if(fail)throw new Error('Save failed');}},React:{createElement:(type,props,...children)=>({type,props,children})}};
+ runInNewContext(js,context);
+ const tree=context.LegendOption({daycare:{id:'school'},code:'A',onRefresh:async()=>{refreshes++;}}),input=tree.children[0].children[1];
+ const target={value:'Tuesday'};input.props.onBlur({currentTarget:target});await new Promise(r=>setImmediate(r));
+ assert.equal(calls[0].path,'/api/substitution-legend');assert.equal(calls[0].args.body.code,'A');assert.equal(calls[0].args.body.value,'Tuesday');assert.equal(refreshes,1);assert.ok(statuses.includes('Saved'));
+ fail=true;target.value='Wednesday';input.props.onBlur({currentTarget:target});await new Promise(r=>setImmediate(r));assert.ok(statuses.includes('Save failed'));assert.equal(refreshes,1);assert.equal(target.value,'A');
+});

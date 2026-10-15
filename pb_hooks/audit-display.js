@@ -17,7 +17,7 @@ function decorate(app,type,school,schoolName,before,after,diff){
     }
     if(key==='code' && settings)for(const side of ['before','after']) {
       const code=String(change[side]||''),description=settings.getString('sub_'+code.toLowerCase()+'_label');
-      if(code)change[side+'_label']=code+(description?' — '+description:'');
+      if(code){const names=JSON.parse(settings.getString('sub_option_names')||'{}')||{};change[side+'_label']=(names[code]||code)+(description?' — '+description:'');}
     }
   }
   const context=value=>({

@@ -282,3 +282,12 @@
 .undo-audit-dialog .button-row { margin-top:1rem; }
 
 .weekly-roster-preview{min-width:900px;font:11px Arial,Helvetica,sans-serif;line-height:1.4;color:#35443a}.weekly-roster-preview header{margin-bottom:14px}.weekly-roster-preview h1{font-size:19px;margin:5px 0}.weekly-roster-preview header p{margin:4px 0;color:#59695e}.weekly-roster-preview .roster-day{margin:0 0 14px}.weekly-roster-preview h2{font-size:13px;background:#e7eee8;border:1px solid #d9e0da;border-radius:4px;padding:7px 10px;display:flex;justify-content:space-between;margin:0 0 5px}.weekly-roster-preview h2 span{font-size:11px}.weekly-roster-preview table{width:100%;table-layout:fixed;border-collapse:collapse}.weekly-roster-preview th,.weekly-roster-preview td{padding:6px 8px;border:1px solid #d9e0da;text-align:left;vertical-align:middle;overflow-wrap:anywhere}.weekly-roster-preview thead th{font-size:10px;color:#59695e}.weekly-roster-preview .count{text-align:center}.weekly-roster-preview .student-names{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:5px 10px}.weekly-roster-preview .student-names span{overflow-wrap:anywhere}.weekly-roster-preview .student-names b{font-size:10px;color:#5b8067}.weekly-roster-preview .count-only{grid-column:1/-1;color:#59695e}.weekly-roster-preview .empty-day{padding:6px 10px;margin:0;border:1px solid #d9e0da}
+
+/* Keep Bergenfield's substitution options together in one row. */
+.summary-legend-bergenfield{grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;font-size:.68rem}
+.summary-legend-bergenfield>div{overflow-wrap:anywhere}
+.legend-option{min-width:0;display:grid;gap:.5rem;align-content:start}
+.legend-option input{width:100%;min-width:0}
+.legend-option small{min-height:1em;overflow-wrap:anywhere}
+@media screen and (max-width:640px){.summary-legend-bergenfield{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media print{.summary-legend-bergenfield{grid-template-columns:repeat(4,minmax(0,1fr));font-size:6.5pt;gap:6px}}
