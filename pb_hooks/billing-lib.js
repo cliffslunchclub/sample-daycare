@@ -3,12 +3,17 @@ const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value) && !isNaN(Date.pars
 function latest(history, entity, date) {
   return history.filter(row => row.entity === entity && row.effective_date <= date).sort((a,b) => b.effective_date.localeCompare(a.effective_date))[0]?.snapshot
 }
+function withDepartures(history,students) {
+  const dates={};for(const row of students)dates[row.id]=row.last_lunch_date||'';
+  return history.map(row=>row.entity!=='school' && Object.prototype.hasOwnProperty.call(dates,row.entity)?{...row,snapshot:{...row.snapshot,last_lunch_date:dates[row.entity]}}:row);
+}
+const attends=(state,day,date)=>Boolean(state?.active && (!state.last_lunch_date || date<=state.last_lunch_date) && (state.service_days||[]).includes(day));
 function daily(school, history, menus, date) {
   const day = weekdays[new Date(date+'T12:00:00Z').getUTCDay()]
   const state = latest(history, 'school', date)
   if (!state) throw new Error('No count history for '+date+'. Set an effective date covering this period before generating an invoice.')
   const closed = ['Saturday','Sunday'].includes(day) || (school.public_slug === 'tle-englewood-cliffs' && day === 'Friday' && state.count_mode === 'manual' && !Number((state.baseline_counts||{}).Friday||0)) || menus.some(row=>row.service_date.slice(0,10)===date && row.closed)
-  const roster = [...new Set(history.filter(row=>row.entity!=='school').map(row=>row.entity))].map(id=>({id,...latest(history,id,date)})).filter(row=>row.active && (row.service_days||[]).includes(day))
+  const roster = [...new Set(history.filter(row=>row.entity!=='school').map(row=>row.entity))].map(id=>({id,...latest(history,id,date)})).filter(row=>attends(row,day,date))
   const quantity = closed ? 0 : state.count_mode==='manual' ? Number((state.baseline_counts||{})[day]||0) : roster.length
   const allergies = closed ? 0 : state.count_mode==='manual' ? Number((state.clc_managed_counts||{})[day]||0) : 0
   return {date, day, closed, quantity, allergies, rate:Number(state.invoice_rate), roster}
@@ -44,22 +49,21 @@ function monthlyPlan(school,history,menus,month,rangeStart,rangeEnd) {
   const start=rangeStart||month+'-01', baseline=latest(history,'school',start);
   if(!baseline)throw new Error('No count history for '+displayDate(start)+'. Set an effective date covering this period.');
   const entities=[...new Set(history.filter(row=>row.entity!=='school').map(row=>row.entity))], groups={},changes={},counts=[];
-  const attends=(state,day)=>state?.active && (state.service_days||[]).includes(day) ? 1 : 0;
   for(let date=new Date(start+'T12:00:00Z');rangeEnd ? date.toISOString().slice(0,10)<=rangeEnd : date.toISOString().startsWith(month);date.setUTCDate(date.getUTCDate()+1)) {
     const d= daily(school,history,menus,date.toISOString().slice(0,10));counts.push({date:d.date,quantity:d.quantity,rate:d.rate,closed:d.closed,day:d.day});if(d.closed)continue;
-    const baseQuantity=baseline.count_mode==='manual'?Number((baseline.baseline_counts||{})[d.day]||0):entities.reduce((n,id)=>n+attends(latest(history,id,start),d.day),0);
+    const baseQuantity=baseline.count_mode==='manual'?Number((baseline.baseline_counts||{})[d.day]||0):entities.reduce((n,id)=>n+Number(attends(latest(history,id,start),d.day,start)),0);
     if(baseQuantity)groups[d.rate]=(groups[d.rate]||0)+baseQuantity;
     const state=latest(history,'school',d.date);
     function adjustment(delta,label,effective){if(!delta)return;const sign=delta>0?'additions':'removals',key=label+'|'+effective+'|'+d.rate+'|'+sign;if(!changes[key])changes[key]={description:(rangeStart?'Period ':'Midmonth ')+sign+': '+label+' - effective '+displayDate(effective),quantity:0,rate:d.rate,taxable:true,adjustment_type:'schedule',effective_date:effective,student_label:label};changes[key].quantity+=delta;}
     if(baseline.count_mode==='roster' && state.count_mode==='roster') {
-      for(const id of entities){const base=latest(history,id,start),current=latest(history,id,d.date),delta=attends(current,d.day)-attends(base,d.day);if(delta){const version=history.filter(row=>row.entity===id&&row.effective_date<=d.date).sort((a,b)=>b.effective_date.localeCompare(a.effective_date))[0];adjustment(delta,shortName(current?.name||base?.name||'Student'),version.effective_date);}}
+      for(const id of entities){const base=latest(history,id,start),current=latest(history,id,d.date),delta=Number(attends(current,d.day,d.date))-Number(attends(base,d.day,start));if(delta){const version=history.filter(row=>row.entity===id&&row.effective_date<=d.date).sort((a,b)=>b.effective_date.localeCompare(a.effective_date))[0];adjustment(delta,shortName(current?.name||base?.name||'Student'),current?.last_lunch_date && d.date>current.last_lunch_date && base?.active ? addDays(current.last_lunch_date,1) : version.effective_date);}}
     }else {
       const version=history.filter(row=>row.entity==='school'&&row.effective_date<=d.date).sort((a,b)=>b.effective_date.localeCompare(a.effective_date))[0];adjustment(d.quantity-baseQuantity,'School counts',version.effective_date);
     }
   }
   const lines=Object.keys(groups).map(rate=>({description:(rangeStart?displayDate(start)+' to '+displayDate(rangeEnd):monthLabel(month))+' Lunch Catering',baseline:true,quantity:groups[rate],rate:Number(rate),taxable:true})).concat(Object.values(changes));
   const service=counts.filter(d=>!d.closed && d.quantity>0), notes=['Total service days: '+service.length+'.'];
-  const baseDays=counts.filter(d=>!d.closed).map(d=>({...d,quantity:baseline.count_mode==='manual'?Number((baseline.baseline_counts||{})[d.day]||0):entities.reduce((n,id)=>n+attends(latest(history,id,start),d.day),0)})).filter(d=>d.quantity>0);
+  const baseDays=counts.filter(d=>!d.closed).map(d=>({...d,quantity:baseline.count_mode==='manual'?Number((baseline.baseline_counts||{})[d.day]||0):entities.reduce((n,id)=>n+Number(attends(latest(history,id,start),d.day,start)),0)})).filter(d=>d.quantity>0);
   if(baseDays.length && baseDays.every(d=>d.quantity===baseDays[0].quantity))notes.push(''+baseDays[0].quantity+' meals per day x '+baseDays.length+' days = '+baseDays.reduce((n,d)=>n+d.quantity,0)+' meals.');
   else for(const day of weekdays.slice(1,6)){const days=baseDays.filter(d=>d.day===day);if(days.length)notes.push(day+': '+days[0].quantity+' meals/day x '+days.length+' days = '+days.reduce((n,d)=>n+d.quantity,0)+' meals.');}
   for(const line of Object.values(changes))notes.push(line.description+': '+(line.quantity>0?'+':'')+line.quantity+' meals.');
@@ -91,4 +95,4 @@ function carryForward(school,history,menus,invoices,start) {
   }
   return lines;
 }
-module.exports={addDays,biweeklyPeriod,carryForward,validDate,latest,daily,totals,weekdays,nyDate,requestDates,displayDate,monthlyPlan,monthLabel}
+module.exports={withDepartures,attends,addDays,biweeklyPeriod,carryForward,validDate,latest,daily,totals,weekdays,nyDate,requestDates,displayDate,monthlyPlan,monthLabel}

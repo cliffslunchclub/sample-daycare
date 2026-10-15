@@ -74,3 +74,24 @@ test('three-to-two-day reduction starts tomorrow and keeps today billed',()=>{
  assert.equal(credit.quantity,-3);assert.equal(credit.effective_date,'2026-10-08');
  assert.equal(plan.lines.reduce((sum,line)=>sum+line.quantity,0),plan.counts.reduce((sum,day)=>sum+day.quantity,0));
 });
+
+test('inclusive departure dates preserve this month and stop later scheduled lunches',()=>{
+ const base=[{entity:'school',effective_date:'2026-09-01',snapshot:{count_mode:'roster',invoice_rate:4}},{entity:'kid',effective_date:'2026-09-01',snapshot:{name:'Graduate Student',active:true,service_days:['Monday','Tuesday','Wednesday','Thursday','Friday']}}];
+ const h=lib.withDepartures(base,[{id:'kid',last_lunch_date:'2026-10-30'}]);
+ assert.equal(lib.daily(school,h,[],'2026-10-30').quantity,1);
+ assert.equal(lib.daily(school,h,[],'2026-11-02').quantity,0);
+ assert.equal(lib.monthlyPlan(school,h,[],'2026-10').counts.reduce((n,d)=>n+d.quantity,0),22);
+ assert.equal(lib.monthlyPlan(school,h,[],'2026-11').counts.reduce((n,d)=>n+d.quantity,0),0);
+ assert.equal(lib.daily(school,h,[],'2026-09-30').quantity,1);
+ const mid=lib.withDepartures(base,[{id:'kid',last_lunch_date:'2026-10-15'}]),plan=lib.monthlyPlan(school,mid,[],'2026-10');
+ assert.equal(plan.lines.find(l=>l.quantity<0).effective_date,'2026-10-16');
+ assert.equal(plan.lines.find(l=>l.quantity<0).quantity,-11);
+ assert.equal(plan.lines.reduce((n,l)=>n+l.quantity,0),plan.counts.reduce((n,d)=>n+d.quantity,0));
+ const cleared=lib.withDepartures(mid,[{id:'kid',last_lunch_date:''}]);assert.equal(lib.daily(school,cleared,[],'2026-11-02').quantity,1);
+ const moved=lib.withDepartures(mid,[{id:'kid',last_lunch_date:'2026-10-23'}]);assert.equal(lib.daily(school,moved,[],'2026-10-23').quantity,1);assert.equal(lib.daily(school,moved,[],'2026-10-26').quantity,0);
+});
+test('departure dates reconcile biweekly invoices across month boundaries',()=>{
+ const h=lib.withDepartures([{entity:'school',effective_date:'2026-10-01',snapshot:{count_mode:'roster',invoice_rate:4}},{entity:'kid',effective_date:'2026-10-01',snapshot:{name:'Graduate',active:true,service_days:['Monday','Tuesday','Wednesday','Thursday','Friday']}}],[{id:'kid',last_lunch_date:'2026-10-30'}]);
+ const plan=lib.monthlyPlan(school,h,[],'2026-10','2026-10-26','2026-11-06');
+ assert.equal(plan.counts.reduce((n,d)=>n+d.quantity,0),5);assert.equal(plan.lines.reduce((n,l)=>n+l.quantity,0),5);assert.equal(plan.lines.find(l=>l.quantity<0).effective_date,'2026-10-31');
+});

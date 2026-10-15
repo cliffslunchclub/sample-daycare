@@ -274,3 +274,5 @@
 .substitution-edit-form { display:flex; align-items:flex-end; flex-wrap:wrap; gap:.6rem; }
 .substitution-edit-form label { min-width:150px; }
 @media(max-width:640px) { .saved-subs .list-row { flex-wrap:wrap; } .substitution-edit-form,.substitution-edit-form label { width:100%; } }
+
+.student-form-fields { border:0; padding:0; margin:0; min-width:0; display:grid; gap:1rem; }

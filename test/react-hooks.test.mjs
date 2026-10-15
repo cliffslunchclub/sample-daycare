@@ -31,7 +31,7 @@ test('school-admin load replaces All daycares with assigned school and ignores s
   const user = { id: 'staff', role: 'daycare_admin', daycare: 'school' };
   const context = {
     user, isClc: false, loadVersion: { current: 0 }, message: String,
-    pb: { authStore: { model: user }, collection: name => ({ getFullList: () => Promise.resolve(name === 'daycares' ? [{ id: 'school' }] : []) }) },
+    pb: { send:()=>Promise.resolve({ready:true}), authStore: { model: user }, collection: name => ({ getFullList: () => Promise.resolve(name === 'daycares' ? [{ id: 'school' }] : []) }) },
     setBusy: () => {}, setError: () => {}, setSelected: callback => { selected = callback(selected); },
     setDaycares: () => { rendered++; }, setClassrooms: () => {}, setStudents: () => {}, setSubs: () => {}, setMenuDays: () => {}, setMenuItems: () => {},
   };
@@ -43,6 +43,7 @@ test('school-admin load replaces All daycares with assigned school and ignores s
   const pending = [];
   context.pb.collection = () => ({ getFullList: () => new Promise(resolve => pending.push(resolve)) });
   const oldLoad = context.load();
+  await new Promise(resolve => setImmediate(resolve));
   context.loadVersion.current++;
   for (const resolve of pending) resolve([]);
   await oldLoad;
@@ -56,7 +57,7 @@ test('weekly summary keeps allergy meals in totals and Subs, excluding them from
   const js = ts.transpileModule(summary.getText(source), { compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
   const { runInNewContext } = await import('node:vm');
   const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-  const context = { weekdays, CollapsiblePanel: 'CollapsiblePanel', React: { createElement: (type, props, ...children) => ({ type, props, children }) } };
+  const context = { studentScheduled:s=>s.active, weekDates:()=>weekdays, weekdays, CollapsiblePanel: 'CollapsiblePanel', React: { createElement: (type, props, ...children) => ({ type, props, children }) } };
   runInNewContext(js, context);
   const tree = context.WeeklySummary({ locations: [{ id: 'fl', name: 'Lightbridge Fort Lee', public_slug: 'lightbridge-fort-lee', count_mode: 'manual', baseline_counts: Object.fromEntries(weekdays.map(day => [day, 62])), clc_managed_counts: Object.fromEntries(weekdays.map(day => [day, 2])) }], students: [], subs: [] });
   const nodes = [];

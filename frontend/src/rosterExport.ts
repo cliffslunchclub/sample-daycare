@@ -2,8 +2,8 @@ import { zipFiles } from './menuExport.ts';
 export const rosterDays = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
 type Student = { id: string; name: string; classroom: string; daycare: string; active: boolean; service_days: string[] };
 type Sub = { student: string; daycare: string; recurring: boolean; weekday: string; code: string };
-export function rosterRows(students: Student[], classrooms: { id: string; name: string }[], subs: Sub[], school: string): string[][] {
-  return students.filter(s => s.active && s.daycare === school).map(s => [classrooms.find(c => c.id === s.classroom)?.name || 'Unassigned', s.name, ...rosterDays.map(day => {
+export function rosterRows(students: Student[], classrooms: { id: string; name: string }[], subs: Sub[], school: string, includePast = false): string[][] {
+  return students.filter(s => (includePast || s.active) && s.daycare === school).map(s => [classrooms.find(c => c.id === s.classroom)?.name || 'Unassigned', s.name, ...rosterDays.map(day => {
     if (!s.service_days.includes(day)) return 'No';
     const sub = subs.find(r => r.daycare === school && r.student === s.id && r.recurring && r.weekday === day);
     return sub ? `Sub ${sub.code}` : 'Yes';
@@ -16,7 +16,7 @@ export function rosterCsv(rows: string[][]): Blob {
   return new Blob(['\uFEFF'+[headers,...rows].map(row=>row.map(safe).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
 }
 export function rosterHtml(school: string, rows: string[][]): string {
- return `<!doctype html><html><head><meta charset="utf-8"><title>${escape(school)} Student Roster</title><style>@page{size:letter landscape;margin:.4in}*{box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}body{font-family:Arial,sans-serif;color:#35443a;margin:24px}h1{font-size:22px;margin:0 0 6px}p{font-size:12px}table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:8px;border:1px solid #d9e0da;text-align:center}td:nth-child(-n+2),th:nth-child(-n+2){text-align:left}th{background:#e7eee8}tr{break-inside:avoid}.yes{background:#e2efda}.no{background:#fce4d6}.sub{background:#fff2cc}@media print{body{margin:0}thead{display:table-header-group}}</style></head><body><h1>${escape(school)} Student Roster</h1><p>${rows.length} active students · Yes: standard lunch · No: no lunch · Sub: substitution</p><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((v,i)=>`<td class="${i<2?'':v==='Yes'?'yes':v==='No'?'no':'sub'}">${escape(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+ return `<!doctype html><html><head><meta charset="utf-8"><title>${escape(school)} Student Roster</title><style>@page{size:letter landscape;margin:.4in}*{box-sizing:border-box;print-color-adjust:exact;-webkit-print-color-adjust:exact}body{font-family:Arial,sans-serif;color:#35443a;margin:24px}h1{font-size:22px;margin:0 0 6px}p{font-size:12px}table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:8px;border:1px solid #d9e0da;text-align:center}td:nth-child(-n+2),th:nth-child(-n+2){text-align:left}th{background:#e7eee8}tr{break-inside:avoid}.yes{background:#e2efda}.no{background:#fce4d6}.sub{background:#fff2cc}@media print{body{margin:0}thead{display:table-header-group}}</style></head><body><h1>${escape(school)} Student Roster</h1><p>${rows.length} students · Yes: standard lunch · No: no lunch · Sub: substitution</p><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((v,i)=>`<td class="${i<2?'':v==='Yes'?'yes':v==='No'?'no':'sub'}">${escape(v)}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
 }
 export function rosterExcel(_school: string, rows: string[][]): Blob {
  const enc=new TextEncoder(), files:Record<string,Uint8Array>={}; const add=(name:string,s:string)=>files[name]=enc.encode(s);

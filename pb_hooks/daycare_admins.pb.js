@@ -116,6 +116,7 @@ routerAdd("POST", "/api/delete-students", (e) => {
   const ids = Array.isArray(body.students) ? [...new Set(body.students.map(String))] : []
   if (!schoolId || !ids.length || ids.length > 500) return e.json(400, { message: "Select between 1 and 500 students." })
   const isClc = e.auth.getString("role") === "clc_admin"
+  if (!isClc) return e.json(403, { message: "Only CLC admins can permanently delete students. Archive them instead." })
   if (!isClc && (e.auth.getString("role") !== "daycare_admin" || e.auth.getString("daycare") !== schoolId)) return e.json(403, { message: "School access is required." })
   try {
     $app.runInTransaction((tx) => {
