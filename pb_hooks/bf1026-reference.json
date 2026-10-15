@@ -1,0 +1,450 @@
+{
+  "version": "bf1026-emailed-v1",
+  "school_slug": "lightbridge-bergenfield",
+  "number": "BF1026",
+  "month": "2026-10",
+  "invoice_date": "2026-10-07",
+  "source_file": "Invoice-Lightbridge-Bergenfield-BF1026.pdf",
+  "sha256": "012c0e0c265c90c58ed52c47a3e1bc0b16dd32aa5d19504bf11430203325e1ca",
+  "roster": [
+    {
+      "id": "eyhnjagcp43qjzo",
+      "name": "Amenze",
+      "service_days": [
+        "Monday",
+        "Wednesday",
+        "Thursday"
+      ],
+      "active": true
+    },
+    {
+      "id": "kcug9x3ee34n5nc",
+      "name": "Gia",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "j3vg5env2l3k4em",
+      "name": "Margo",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "qch2usbbpv8d007",
+      "name": "Ethan",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "1xki1ab23dyx5wq",
+      "name": "Nolan",
+      "service_days": [
+        "Monday",
+        "Wednesday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "jwq6o6lhqzggtep",
+      "name": "Bilal",
+      "service_days": [
+        "Monday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "ejd9203qh2powiy",
+      "name": "Lyla",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "jhqhid37j2y7g41",
+      "name": "Noah",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "eagqr7g6gfc86tk",
+      "name": "Bianca",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "gjhpat0fxap0jx6",
+      "name": "Benny",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "lt38us2djznz7az",
+      "name": "Viv",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "aipfmzjkc9uvw0u",
+      "name": "Ade",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "ytbi5gvq24otm6m",
+      "name": "Oliver",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "y0redpz31hufs3j",
+      "name": "Ethan",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "q9451q6lvkfp8zf",
+      "name": "Andres",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "tuhe18tz2kgpl1b",
+      "name": "Lucas",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "3wzc2rs3idktwb2",
+      "name": "Amjad",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "9hwx43ag9qfwj4t",
+      "name": "Starling",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "oqlp84a1grqgi1e",
+      "name": "Jayla",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "q4o01l9jvgb3z1d",
+      "name": "Leo Stern (veg)",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "fzf3ft0ezgq0lov",
+      "name": "Damian",
+      "service_days": [
+        "Monday",
+        "Wednesday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "a7yg7599pc7s1co",
+      "name": "Eddie",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "qko1568o5nmai6u",
+      "name": "Zayn",
+      "service_days": [
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "vxgedk3umfzc06m",
+      "name": "Gabby",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "vfw94d4q8v6ip30",
+      "name": "Athena",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "y72xmo4iit3li6e",
+      "name": "Isabella",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "ny5psw8bfnycwt8",
+      "name": "Mathias",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "psujk8vrlfukuwt",
+      "name": "Neveen",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "4h8xi6pliqjhw20",
+      "name": "Evan",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "qjqzxj298hecr19",
+      "name": "Killian",
+      "service_days": [
+        "Monday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "f47etpstmbv3naf",
+      "name": "Madison",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "bng2ajsk4jskmwu",
+      "name": "Rj",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "zudn50q9x0nlnzf",
+      "name": "Siena",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "7b4zapnp69vi4j2",
+      "name": "Charlotte W",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "7cb1d5x08fswlo7",
+      "name": "Kai",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "v8rdnoyzpbcxdvy",
+      "name": "Rael",
+      "service_days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "gxmyfobkz0emdz7",
+      "name": "Emalina",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "uvri1qgg7ieqc9d",
+      "name": "Devaj",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    },
+    {
+      "id": "cizfyc4igcgmo30",
+      "name": "Luciano",
+      "service_days": [
+        "Friday"
+      ],
+      "active": true
+    }
+  ],
+  "lines": [
+    {
+      "description": "October 2026 Lunch Catering",
+      "baseline": true,
+      "quantity": 589,
+      "rate": 4,
+      "taxable": true
+    },
+    {
+      "description": "Midmonth additions: Derek M - effective 10-08-2026",
+      "adjustment_type": "schedule",
+      "effective_date": "2026-10-08",
+      "student_label": "Derek M",
+      "quantity": 4,
+      "rate": 4,
+      "taxable": true
+    },
+    {
+      "description": "Midmonth removals: Nolan - effective 10-08-2026",
+      "adjustment_type": "schedule",
+      "effective_date": "2026-10-08",
+      "student_label": "Nolan",
+      "quantity": -6,
+      "rate": 4,
+      "taxable": true
+    },
+    {
+      "description": "Adjustment - RJ + Benny",
+      "quantity": -44,
+      "rate": 4,
+      "taxable": true
+    }
+  ],
+  "generated_notes": "Total service days: 22\nMonday: 25 meals/day x 4 days = 100 meals\nTuesday: 21 meals/day x 4 days = 84 meals\nWednesday: 25 meals/day x 4 days = 100 meals\nThursday: 23 meals/day x 5 days = 115 meals\nFriday: 38 meals/day x 5 days = 190 meals\nTotal scheduled meals: 587\nMidmonth additions: Derek M - effective 10-08-2026: +4 meals\nMidmonth removals: Nolan - effective 10-08-2026: -6 meals"
+}

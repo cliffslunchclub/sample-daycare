@@ -12,14 +12,14 @@ function remove(app,r,school,actor){
  if(r.getString('invoice_id')){
   const invoice=app.findRecordById('invoices',r.getString('invoice_id'));
   if(invoice.getString('daycare')!==school.id)throw new Error('Invoice belongs to another school.');
-  issued=invoice.getString('status')==='issued';
+  issued=['issued','closed'].includes(invoice.getString('status'));
   if(!issued){
-   const lines=JSON.parse(invoice.getString('lines')||'[]').filter(l=>l.request_id!==r.id);
+   const lines=JSON.parse(invoice.getString('lines')||'[]').filter(l=>l.request_id!==r.id&&l.pending_request!==r.id);
    if(!lines.length)lines.push({description:'Adjustment',quantity:0,rate:school.getFloat('invoice_rate'),taxable:true});
    const sum=lib.totals(lines);for(const key of Object.keys(sum))invoice.set(key,sum[key]);
    const description='One-off lunch: '+r.getString('student_label')+' ('+lib.displayDate(r.getString('service_date'))+')';
    invoice.set('generated_notes',invoice.getString('generated_notes').split('\n').filter(l=>!l.startsWith(description+':')).join('\n'));
-   audit.save(app,invoice,actor);r.set('invoice_id','');
+   require(__hooks+'/invoice-adjustments.js').notes(invoice);audit.save(app,invoice,actor);r.set('invoice_id','');
   }
  }
  r.set('status','deleted');audit.save(app,r,actor);return issued;
@@ -31,7 +31,8 @@ function approve(app,r,school,actor){
  const date=r.getString('service_date');
  const duplicate=app.findRecordsByFilter('lunch_requests','daycare = {:school} && kind = "lunch" && status = "approved" && service_date = {:date} && id != {:id}','',0,0,{school:school.id,date,id:r.id}).some(other=>(r.getString('student')&&other.getString('student')===r.getString('student'))||other.getString('student_label').trim().toLowerCase()===r.getString('student_label').trim().toLowerCase());
  if(duplicate)throw new Error('An approved lunch already exists for this student and date. No requests were approved.');
- const drafts=app.findRecordsByFilter('invoices','daycare = {:school} && status = "draft"','',0,0,{school:school.id}).filter(i=>i.getString('billing_cycle')==='biweekly'?i.getString('period_start')<=date&&i.getString('period_end')>=date:i.getString('month')===date.slice(0,7));
+ const closedPeriod=require(__hooks+'/invoice-adjustments.js').closedDate(app,school,date);
+ const drafts=closedPeriod?[]:app.findRecordsByFilter('invoices','daycare = {:school} && status = "draft"','',0,0,{school:school.id}).filter(i=>i.getString('billing_cycle')==='biweekly'?i.getString('period_start')<=date&&i.getString('period_end')>=date:i.getString('month')===date.slice(0,7));
  if(drafts.length>1)throw new Error('More than one draft invoice covers this date. Review the invoices before approving.');
  if(drafts.length===1){
   const invoice=drafts[0],lines=JSON.parse(invoice.getString('lines')||'[]');

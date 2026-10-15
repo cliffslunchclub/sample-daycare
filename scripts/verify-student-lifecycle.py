@@ -13,7 +13,8 @@ def req(method,path,body=None,token='',expected=200):
  assert status==expected,(method,path,status,value)
  return value
 try:
- flags=['--dir='+str(tmp/'data'),'--hooksDir='+str(root/'pb_hooks'),'--migrationsDir='+str(root/'pb_migrations')]
+ shutil.copytree(root/'pb_migrations',tmp/'migrations')
+ flags=['--dir='+str(tmp/'data'),'--hooksDir='+str(root/'pb_hooks'),'--migrationsDir='+str(tmp/'migrations')]
  subprocess.run([str(root/'.runtime/pocketbase'),'superuser','upsert','qa@example.test',password,*flags],check=True,stdout=log,stderr=log)
  server=subprocess.Popen([str(root/'.runtime/pocketbase'),'serve','--http=127.0.0.1:'+str(port),*flags],stdout=log,stderr=log)
  for _ in range(100):
