@@ -384,15 +384,14 @@ function StudentEditor({ editing, onClose, children }: { editing: boolean; onClo
 }
 
 function StudentsPage({ isClc, subs, current, students, classrooms, onRefresh, error }: { isClc: boolean; subs: Row[]; current: Daycare | null; students: Student[]; classrooms: Row[]; onRefresh: () => Promise<void>; error: (s: string) => void }) {
-  function studentEffectiveDate(tomorrow = false) { const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date()); const date = new Date(today + 'T12:00:00Z'); date.setUTCDate(date.getUTCDate() + (tomorrow ? 1 : 0)); return date.toISOString().slice(0, 10); }
-  const [effective, setEffective] = useState(() => studentEffectiveDate(true));
-  const [effectiveCustom, setEffectiveCustom] = useState(false);
+  function studentEffectiveDate(offsetDays = 0) { const date = new Date(schoolToday() + 'T12:00:00Z'); date.setUTCDate(date.getUTCDate() + offsetDays); return date.toISOString().slice(0, 10); }
+  const [effective, setEffective] = useState(() => studentEffectiveDate());
   const [sortKey, setSortKey] = useState('classroom');
   const [sortDirection, setSortDirection] = useState(1);
   const [classroomFilter, setClassroomFilter] = useState('');
   const [rosterFilter, setRosterFilter] = useState('active');
   const [lastLunchDate, setLastLunchDate] = useState('');
-  const [bulkLastDate, setBulkLastDate] = useState(schoolToday);
+  const [bulkLastDate, setBulkLastDate] = useState(() => studentEffectiveDate(-1));
   const [studentSearch, setStudentSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [destination, setDestination] = useState(''); const [moving, setMoving] = useState(false); const [moveNotice, setMoveNotice] = useState('');
@@ -414,8 +413,8 @@ function StudentsPage({ isClc, subs, current, students, classrooms, onRefresh, e
   const chosenStudents = visibleStudents.filter((student) => selectedIds.includes(student.id));
   if (!current) return <Empty collapsible title="Choose one daycare" text="Select a single daycare in the top bar to manage its roster." />;
   async function saveRoom(e: FormEvent) { e.preventDefault(); try { await pb.collection('classrooms').create({ name: roomName.trim(), daycare: current!.id, active: true, meal_size: current!.sizes_enabled ? 'small' : 'standard', age_order: Math.max(0, ...classrooms.map((c) => Number(c.age_order || 0))) + 1 }); setRoomName(''); await onRefresh(); } catch (e) { error(message(e)); } }
-  function edit(s: Student) { setEffectiveCustom(false); setEffective(s.billing_effective_date || studentEffectiveDate()); setEditing(s); setName(s.name); setRoom(s.classroom); setDays(s.service_days || []); setActive(s.active); setLastLunchDate(s.last_lunch_date || ''); }
-  function reset() { setEffectiveCustom(false); setEffective(studentEffectiveDate(true)); setEditing(null); setName(''); setRoom(orderedRooms[0]?.id || ''); setDays([]); setActive(true); setLastLunchDate(''); }
+  function edit(s: Student) { setEffective(studentEffectiveDate()); setEditing(s); setName(s.name); setRoom(s.classroom); setDays(s.service_days || []); setActive(s.active); setLastLunchDate(s.last_lunch_date || ''); }
+  function reset() { setEffective(studentEffectiveDate()); setEditing(null); setName(''); setRoom(orderedRooms[0]?.id || ''); setDays([]); setActive(true); setLastLunchDate(''); }
   async function reviewRequests(ids: string[], date: string) {
     if (!ids.length || !date) return {};
     const preview = await pb.send<Row>('/api/student-lifecycle', { method:'POST', body:{action:'preview',daycare:current!.id,students:ids,last_lunch_date:date},requestKey:null });
@@ -432,7 +431,7 @@ function StudentsPage({ isClc, subs, current, students, classrooms, onRefresh, e
       reset(); await onRefresh(); setMoveNotice(result.message);
     } catch(err) { error(message(err)); } finally { setMoving(false); }
   }
-  function archive(s: Student) { edit(s); setLastLunchDate(s.last_lunch_date || schoolToday()); }
+  function archive(s: Student) { edit(s); setLastLunchDate(s.last_lunch_date || studentEffectiveDate(-1)); }
   async function archiveSelectedStudents() {
     if (!chosenStudents.length || !bulkLastDate || moving) return;
     if (!window.confirm(`Set ${invoiceDate(bulkLastDate)} as the last lunch date for ${chosenStudents.length} selected students? Their records and earlier schedules will be retained.`)) return;
@@ -467,9 +466,9 @@ function StudentsPage({ isClc, subs, current, students, classrooms, onRefresh, e
       <StudentEditor editing={Boolean(editing)} onClose={reset}><h2 id="student-editor-title">{editing ? 'Edit Student' : 'Add a Student'}</h2><form onSubmit={saveStudent} className="stack-form"><fieldset className="student-form-fields" disabled={moving}>
         <label>Student name<input value={name} onChange={(e) => setName(e.target.value)} required /></label><label>Classroom<select value={room} onChange={(e) => setRoom(e.target.value)} required><option value="">Choose classroom</option>{orderedRooms.filter((c) => c.daycare === current!.id && c.active).map((c) => <option value={c.id} key={c.id}>{c.name}</option>)}</select></label>
         {current.sizes_enabled && <p>Meal Size: <b>{room ? titleCase(classrooms.find(c=>c.id===room)?.meal_size||'small') : 'Choose a Classroom'}</b> · Set by Classroom</p>}
-        <label>Schedule Effective Date<DateField required value={effective} onChange={value => { setEffective(value); setEffectiveCustom(true); }} label="Effective Date" /></label><fieldset><legend>Recurring service days</legend><div className="day-picks">{weekdays.map((d) => <label key={d}><input type="checkbox" checked={days.includes(d)} onChange={(e) => { const nextDays = e.target.checked ? [...days, d] : days.filter((x) => x !== d); setDays(nextDays); if (!effectiveCustom) setEffective(studentEffectiveDate(!editing || active !== editing.active || weekdays.some(day => nextDays.includes(day) !== (editing.service_days || []).includes(day)))); }} />{d.slice(0, 3)}</label>)}</div></fieldset>
-        <label>Last Lunch Date<DateField value={lastLunchDate} onChange={setLastLunchDate} label="Last Lunch Date" /></label><p className="muted small">Optional. Scheduled lunches continue through this date. The student moves to Past Students afterward, with their history retained. Clear this date to cancel a planned departure.</p>
-        {!active && <p className="notice">This student is inactive. <button type="button" className="quiet" onClick={() => { setActive(true); setLastLunchDate(''); setEffective(studentEffectiveDate(true)); }}>Return to Active Students</button></p>}
+        <label>Schedule Effective Date<DateField required value={effective} onChange={setEffective} label="Effective Date" /></label><p className="muted small">Student changes take effect today by default (New York date). Choose a different date only when scheduling a future or past correction. Draft invoice and kitchen counts update for the selected date; issued invoices remain frozen, with corrections handled as adjustments.</p><fieldset><legend>Recurring service days</legend><div className="day-picks">{weekdays.map((d) => <label key={d}><input type="checkbox" checked={days.includes(d)} onChange={(e) => { const nextDays = e.target.checked ? [...days, d] : days.filter((x) => x !== d); setDays(nextDays); }} />{d.slice(0, 3)}</label>)}</div></fieldset>
+        <label>Last Lunch Date<DateField value={lastLunchDate} onChange={setLastLunchDate} label="Last Lunch Date" /></label><p className="muted small">Optional and inclusive: lunches continue through the selected date. To stop lunches today, set the last lunch date to yesterday. To include today and stop tomorrow, select today. The student's earlier history remains intact.</p>
+        {!active && <p className="notice">This student is inactive. <button type="button" className="quiet" onClick={() => { setActive(true); setLastLunchDate(''); setEffective(studentEffectiveDate()); }}>Return to Active Students</button></p>}
         <div className="form-actions"><button className="primary">{moving ? 'Saving…' : editing ? 'Save Changes' : 'Add Student'}</button>{editing && <button type="button" className="outline" onClick={reset}>Cancel</button>}</div></fieldset>
       </form></StudentEditor>
     </div>
