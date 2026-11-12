@@ -85,9 +85,9 @@ test('permanent student deletions take effect today, not tomorrow',()=>{
  assert.equal(billing.daily(school,history(f.stored),[],'2026-11-11').quantity,1);
 });
 test('archiving a student with yesterday as inclusive last-lunch date removes today only',()=>{
- const before=history([{getString:key=>key==='entity'?'kid':key==='effective_date'?'2026-11-01':'{}'}]);
- const source=before.slice(0,1).concat([{entity:'kid',effective_date:'2026-11-01',
-   snapshot:{name:'Gia',active:true,service_days:['Wednesday','Thursday']}}]);
+ const source=[{entity:'school',effective_date:'2026-11-01',snapshot:{count_mode:'roster',invoice_rate:4}},
+   {entity:'kid',effective_date:'2026-11-01',
+   snapshot:{name:'Gia',active:true,service_days:['Wednesday','Thursday']}}];
  const updated=billing.withDepartures(source,[{id:'kid',last_lunch_date:'2026-11-11'}]);
  assert.equal(billing.daily(school,updated,[],'2026-11-11').quantity,1);
  assert.equal(billing.daily(school,updated,[],effectiveToday).quantity,0);
