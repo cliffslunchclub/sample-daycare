@@ -5,10 +5,51 @@ function data(app,school){
  const students=rows('students');return {school:plain(school),history:lib.withDepartures(rows('schedule_history'),students),menus:rows('menu_days'),requests:rows('lunch_requests'),invoices:rows('invoices')};
 }
 function snapshot(app,school,invoice){const d=data(app,school),p=calc.period(plain(invoice));return calc.capture(d.school,d.history,d.menus,p.start,p.end);}
+
+function correctionSource(invoice,requests){
+  // Issued invoices are frozen just like closed invoices. Their billing_snapshot
+  // is the original charge reference; closing them later must not create a
+  // second correction for the same source invoice.
+  let ref=invoice.status==='closed'?invoice.closed_snapshot?.reference:
+    invoice.status==='issued'?invoice.billing_snapshot:null;
+  if(!ref?.version||ref.correction_only)return null;
+  if(invoice.status==='closed')return {source:invoice,reference:ref};
+  ref=JSON.parse(JSON.stringify(ref));
+  ref.requests={};
+  for(const line of invoice.lines||[]){
+    if(!line.request_id||line.pending_source)continue;
+    const request=requests.find(r=>r.id===line.request_id);
+    ref.requests[calc.key('request:'+line.request_id,line.rate)]={
+      entity:'request:'+line.request_id,label:request?.student_label||line.request_label||'One-off student',
+      rate:Number(line.rate),quantity:Number(line.quantity),
+      dates:[request?.service_date||line.service_date].filter(Boolean),request_id:line.request_id,
+    };
+  }
+  // Respect intentionally omitted schedule adjustments, as close() already
+  // does for finalized invoices.
+  for(const entry of invoice.removed_adjustments||[]){
+    const line=entry.line||{};
+    if(line.adjustment_type!=='schedule'||!line.schedule_entity)continue;
+    const id=calc.key(line.schedule_entity,line.rate);
+    const unit=ref.units[id]||{entity:line.schedule_entity,label:line.student_label||'School counts',rate:line.rate,quantity:0,dates:[]};
+    unit.quantity-=Number(line.quantity);
+    const dates=line.service_dates||[];
+    unit.dates=Number(line.quantity)>0?unit.dates.filter(d=>!dates.includes(d)):
+      [...new Set([...unit.dates,...dates])].sort();
+    ref.units[id]=unit;
+    if(entry.dismissed){
+      ref.dismissed=ref.dismissed||{};
+      ref.dismissed[id]={current_quantity:invoice.billing_snapshot?.units?.[id]?.quantity||0,quantity:Number(line.quantity)};
+    }
+  }
+  return {source:{...invoice,closed_snapshot:{reference:ref}},reference:ref};
+}
+
 function list(app,school,includeDismissed=false){
  const d=data(app,school),items=[];
- for(const source of d.invoices.filter(i=>i.status==='closed'&&i.closed_snapshot?.reference&&!i.closed_snapshot.reference.correction_only)){
-  const ref=source.closed_snapshot.reference,current=calc.capture(d.school,d.history,d.menus,ref.start,ref.end);
+ for(const invoice of d.invoices){
+  const corrected=correctionSource(invoice,d.requests);if(!corrected)continue;
+  const {source,reference:ref}=corrected,current=calc.capture(d.school,d.history,d.menus,ref.start,ref.end);
   // Older aggregate-only references compare totals without inventing student names.
   if(ref.aggregate){const units={};for(const u of Object.values(current.units)){const id=calc.key('school',u.rate);if(!units[id])units[id]={entity:'school',label:'School counts',rate:u.rate,quantity:0,dates:[]};units[id].quantity+=u.quantity;units[id].dates=[...new Set([...units[id].dates,...u.dates])];}current.units=units;}
   items.push(...calc.pending(source,current,calc.requestUnits(ref,d.requests,d.school,d.history,d.menus),d.invoices).filter(item=>{const hidden=ref.dismissed?.[item.unit];return !hidden||hidden.quantity!==item.quantity||hidden.current_quantity!==item.current_quantity;}));
@@ -88,8 +129,9 @@ function dismiss(app,school,actor,body){
 }
 function currentValues(app,school){
  const d=data(app,school),values={};
- for(const source of d.invoices.filter(i=>i.status==='closed'&&i.closed_snapshot?.reference&&!i.closed_snapshot.reference.correction_only)){
-  const ref=source.closed_snapshot.reference,current=calc.capture(d.school,d.history,d.menus,ref.start,ref.end);
+ for(const invoice of d.invoices){
+  const corrected=correctionSource(invoice,d.requests);if(!corrected)continue;
+  const {source,reference:ref}=corrected,current=calc.capture(d.school,d.history,d.menus,ref.start,ref.end);
   if(ref.aggregate){const units={};for(const u of Object.values(current.units)){const id=calc.key('school',u.rate);if(!units[id])units[id]={quantity:0};units[id].quantity+=u.quantity;}current.units=units;}
   const units={...current.units,...calc.requestUnits(ref,d.requests,d.school,d.history,d.menus)};
   for(const id of new Set([...Object.keys(ref.units||{}),...Object.keys(ref.requests||{}),...Object.keys(units)]))values[source.id+'::'+id]=Number(units[id]?.quantity||0);
@@ -108,4 +150,4 @@ function resetUndoDrafts(app,school,before,actor){
  }
  return removed;
 }
-module.exports={totals,plain,data,snapshot,list,closedDate,notes,apply,remove,close,ensure,dismiss,currentValues,resetUndoDrafts};
+module.exports={totals,plain,data,snapshot,list,closedDate,notes,apply,remove,close,ensure,dismiss,currentValues,resetUndoDrafts,correctionSource};
