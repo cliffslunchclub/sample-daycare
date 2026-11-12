@@ -1,7 +1,7 @@
 import { substitutionName } from './substitutionLabels';
 import { SubstitutionLegendEditor } from './SubstitutionLegendEditor';
 import { WeeklyRoster } from './WeeklyRoster';
-import { schoolToday, pastStudent, studentScheduled, inRoster } from './studentLifecycle';
+import { schoolToday, pastStudent, inRoster } from './studentLifecycle';
 import { scheduledStudentsForDate, type RosterVersion } from './datedRoster';
 import { CollapsiblePanel } from './CollapsiblePanel';
 import { AuditLog } from './AuditLog';
