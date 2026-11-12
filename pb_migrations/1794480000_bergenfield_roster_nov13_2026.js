@@ -1,13 +1,17 @@
 // Bergenfield roster from "hot lunch numbers.docx.pdf" (received 2026-11-12).
 // Effective 2026-11-13; preserve all schedule dates and issued invoice records before then.
-// Ignore "(2)" and "(3)" markers; the individual names, not printed totals,
-// govern recurring service counts. The PDF has mismatched printed subtotals.
+// "(2)" and "(3)" mark internal pizza-slice operations, not student names,
+// meal sizes, or order quantities. Printed subtotals contain human errors;
+// recurring service counts come solely from the individual listed names.
 // Do not modify the historic October/November seed or issued invoices.
 const effective='2026-11-13';
 const previous='2026-11-12';
 const weekdays=['Monday','Tuesday','Wednesday','Thursday','Friday'];
 const roster={"Mobile Infants":[["Amenze","Gia"],["Gia"],["Amenze","Gia"],["Amenze","Gia"],["Gia"]],"Purple Cats":[[],["Ethan"],["Ethan"],["Ethan"],["Ethan","Nolan","Lyla"]],"Khaki Kangaroo":[["Bianca","Benny","Vivi"],["Bianca","Benny","Vivi"],["Bianca","Benny","Vivi"],["Bianca","Benny","Vivi"],["Bianca","Benny","Vivi"]],"Yellow Ducks":[["Jayla","Leo (veg)","Damian"],["Jayla","Leo (veg)","Zayn"],["Jayla","Leo (veg)","Damian","Zayn"],["Jayla","Leo (veg)","Zayn"],["Jayla","Leo (veg)","Damian","Zayn","Gabby","Athena","Isabella","Mathias"]],"Blue Horses":[["Madison","Killian","Evan","Penny","Joey"],["Madison","Evan","Penny","Joey","Killian"],["Madison","Killian","Evan","Penny","Joey"],["Madison","Killian","Evan","Penny","Joey"],["Madison","Killian","Evan","Penny","Joey"]],"Green Frogs":[[],[],[],[],[]],"Goldfish":[["Ethan","Andres","Ade","Oliver","Margo"],["Ethan","Andres","Ade","Oliver","Margo"],["Ethan","Andres","Ade","Oliver","Margo"],["Ethan","Andres","Ade","Oliver","Margo"],["Ethan","Andres","Lucas","Amjad","Derek","Ade","Oliver","Margo","Starling"]],"Brown Bears":[["RJ","Siena","Charlotte","Kai","Rael"],["RJ","Siena","Charlotte","Kai","Rael"],["RJ","Siena","Charlotte","Kai","Rael"],["RJ","Siena","Charlotte","Kai","Rael"],["RJ","Siena","Charlotte","Kai","Rael","Emalina","Devaj"]]};
 
+function stripPizzaMarkers(value){
+  return String(value||'').replace(/\s*\([23]\)\s*/g,' ').replace(/\s+/g,' ').trim();
+}
 function nameKey(value){
   const first=String(value||'').trim().split(/\s+/)[0].toLowerCase().replace(/\([^)]*\)/g,'');
   return first==='viv'?'vivi':first;
@@ -65,7 +69,7 @@ migrate(app=>{
       if(!row)row=new Record(collection);
       const oldDays=fresh?[]:JSON.parse(row.getString('service_days')||'[]');
       const oldName=fresh?'':row.getString('name');
-      let name=oldName||label;
+      let name=stripPizzaMarkers(oldName||label);
       if(key==='vivi')name=name.replace(/^Viv\b/i,'Vivi');
       if(key==='leo'&&!/\(veg\)/i.test(name))name=name.replace(/\s+\([^)]*\)$/,'')+' (veg)';
       const shouldSave=fresh||oldName!==name||!row.getBool('active')||row.getString('classroom')!==room.id||
@@ -88,11 +92,16 @@ migrate(app=>{
   for(const row of all){
     if(used.has(row.id))continue;
     const oldDays=JSON.parse(row.getString('service_days')||'[]');
-    if(!row.getBool('active')||!oldDays.length)continue;
-    row.set('service_days',[]);
-    row.set('billing_effective_date',effective);
-    if(!row.getString('last_lunch_date')||row.getString('last_lunch_date')>previous)
-      row.set('last_lunch_date',previous);
+    const cleanName=stripPizzaMarkers(row.getString('name'));
+    const stopSchedule=row.getBool('active')&&oldDays.length>0;
+    if(cleanName===row.getString('name')&&!stopSchedule)continue;
+    if(cleanName!==row.getString('name'))row.set('name',cleanName);
+    if(stopSchedule){
+      row.set('service_days',[]);
+      row.set('billing_effective_date',effective);
+      if(!row.getString('last_lunch_date')||row.getString('last_lunch_date')>previous)
+        row.set('last_lunch_date',previous);
+    }
     audit.save(app,row,null);
   }
 },_app=>{
