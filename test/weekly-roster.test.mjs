@@ -118,3 +118,25 @@ test('Bergenfield closed days and schools with zero lunches keep zero counts wit
  assert.equal((html.match(/class="matrix-room"/g)||[]).length,8);
  assert.match(html,/class="matrix-grand-total"/);
 });
+
+
+test('Bergenfield printer keeps title, footer and classroom tables in non-overlapping page flow',()=>{
+ const data={
+   school_name:'Lightbridge Bergenfield',start:'2026-11-09',end:'2026-11-13',as_of:'2026-11-12',
+   days:['Monday','Tuesday','Wednesday','Thursday','Friday'].map(day=>({
+     day,closed:false,total:1,classrooms:[{name:'Mobile Infants',total:1,students:[{name:'Gia',sub:false}]}]
+   })),
+ };
+ const print=weeklyRosterHtml(data);
+ assert.match(print,/@page\{size:letter portrait;margin:\.42in \.45in \.42in\}/);
+ assert.match(print,/\.roster-matrix \.matrix-head\{position:static;margin:0 0 9px;padding:0 0 6px\}/);
+ assert.match(print,/\.roster-matrix \.matrix-foot\{position:static;break-inside:avoid;page-break-inside:avoid;margin:6px 0 0\}/);
+ assert.doesNotMatch(print,/\.roster-matrix \.matrix-(?:head|foot)\{position:fixed/);
+ assert.doesNotMatch(print,/(?:top:-\.71in|bottom:-\.37in)/,'No negative page-boundary offsets');
+ assert.match(print,/\.roster-matrix \.matrix-summary,\.roster-matrix \.matrix-room,\.roster-matrix table\{break-inside:avoid;page-break-inside:avoid\}/);
+ assert.ok(print.indexOf('class="matrix-head"')<print.indexOf('class="matrix-summary"'));
+ assert.ok(print.indexOf('class="matrix-foot"')>print.indexOf('class="matrix-rooms"'));
+ // These are browser-managed page boundaries, not forced headings/footers
+ // placed on top of an unrelated classroom.
+ assert.doesNotMatch(print,/break-after:page;page-break-after:always/);
+});
