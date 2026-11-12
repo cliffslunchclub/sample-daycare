@@ -37,9 +37,9 @@ test('dated migration retains old snapshots and student IDs, moves students and 
     record('ade',{name:'Ade',daycare:'bf',classroom:rid('Green Frogs'),active:true,service_days:days}),
     record('oliver',{name:'Oliver',daycare:'bf',classroom:rid('Green Frogs'),active:true,service_days:days}),
     record('margo',{name:'Margo',daycare:'bf',classroom:rid('Purple Cats'),active:true,service_days:days}),
-    record('eddie',{name:'Eddie',daycare:'bf',classroom:rid('Yellow Ducks'),active:true,service_days:days}),
-    record('viv',{name:'Viv',daycare:'bf',classroom:rid('Khaki Kangaroo'),active:true,service_days:days}),
-    record('leo',{name:'Leo Stern (veg)',daycare:'bf',classroom:rid('Yellow Ducks'),active:true,service_days:days}),
+    record('eddie',{name:'Eddie (3)',daycare:'bf',classroom:rid('Yellow Ducks'),active:true,service_days:days}),
+    record('viv',{name:'Viv (2)',daycare:'bf',classroom:rid('Khaki Kangaroo'),active:true,service_days:days}),
+    record('leo',{name:'Leo Stern (veg) (3)',daycare:'bf',classroom:rid('Yellow Ducks'),active:true,service_days:days}),
   ];
   const prior=students.map(s=>({id:s.id,effective_date:'2026-11-01',snapshot:{name:s.data.name,active:s.data.active,service_days:[...s.data.service_days],classroom:s.data.classroom}}));
   const history=[...prior];
@@ -58,6 +58,7 @@ test('dated migration retains old snapshots and student IDs, moves students and 
   assert.equal(students.find(s=>s.id==='margo').data.classroom,rid('Goldfish'));
   assert.equal(students.find(s=>s.id==='nolan').data.service_days.join(','),'Friday');
   assert.equal(students.find(s=>s.id==='eddie').data.last_lunch_date,'2026-11-12');
+  assert.equal(students.find(s=>s.id==='eddie').data.name,'Eddie','Old pizza markers do not remain on inactive/past students');
   assert.equal(JSON.stringify(students.find(s=>s.id==='eddie').data.service_days),'[]');
   assert.equal(students.find(s=>s.id==='viv').data.name,'Vivi');
   assert.equal(students.find(s=>s.id==='leo').data.name,'Leo Stern (veg)');
