@@ -42,7 +42,7 @@ function run(app,actor,body){
     }
     if(action==='save'){
       const row=rows[0]||new Record(tx.findCollectionByNameOrId('students'));
-      const effective=String(body.billing_effective_date||'');
+      const effective=String(body.billing_effective_date||lib.nyDate());
       if(!lib.validDate(effective))throw new Error('Choose a valid schedule effective date.');
       const room=tx.findRecordById('classrooms',String(body.classroom||''));
       if(room.getString('daycare')!==schoolId||!room.getBool('active'))throw new Error('Choose an active classroom in this school.');
