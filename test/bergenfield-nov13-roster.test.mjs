@@ -58,7 +58,7 @@ test('dated migration retains old snapshots and student IDs, moves students and 
   assert.equal(students.find(s=>s.id==='margo').data.classroom,rid('Goldfish'));
   assert.equal(students.find(s=>s.id==='nolan').data.service_days.join(','),'Friday');
   assert.equal(students.find(s=>s.id==='eddie').data.last_lunch_date,'2026-11-12');
-  assert.deepEqual(students.find(s=>s.id==='eddie').data.service_days,[]);
+  assert.equal(JSON.stringify(students.find(s=>s.id==='eddie').data.service_days),'[]');
   assert.equal(students.find(s=>s.id==='viv').data.name,'Vivi');
   assert.equal(students.find(s=>s.id==='leo').data.name,'Leo Stern (veg)');
   assert.equal(rooms[0].data.name,'Mobile Infants');
