@@ -175,8 +175,8 @@ test('Bergenfield weekly summary uses current saved students for every weekday, 
  const tuesday=result.days.find(day=>day.day==='Tuesday');
  assert.equal(monday.total,3,'Two current Goldfish plus one approved Margo one-off');
  assert.equal(monday.classrooms.find(c=>c.name==='Purple Cats').total,1);
- assert.deepEqual(monday.classrooms.find(c=>c.name==='Purple Cats').students.map(s=>s.name),['Margo']);
- assert.deepEqual(monday.classrooms.find(c=>c.name==='Goldfish').students.map(s=>s.name),['Amjad','Ethan']);
+ assert.equal(monday.classrooms.find(c=>c.name==='Purple Cats').students.map(s=>s.name).join(','),'Margo');
+ assert.equal(monday.classrooms.find(c=>c.name==='Goldfish').students.map(s=>s.name).join(','),'Amjad,Ethan');
  assert.equal(tuesday.total,3,'The current Tuesday schedule includes both Ethans and Amjad');
  assert.equal(tuesday.classrooms.find(c=>c.name==='Purple Cats').total,1);
  assert.equal(tuesday.classrooms.find(c=>c.name==='Purple Cats').students[0].sub,true);
