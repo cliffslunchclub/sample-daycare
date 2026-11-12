@@ -2,6 +2,7 @@ import { substitutionName } from './substitutionLabels';
 import { SubstitutionLegendEditor } from './SubstitutionLegendEditor';
 import { WeeklyRoster } from './WeeklyRoster';
 import { schoolToday, pastStudent, studentScheduled, inRoster } from './studentLifecycle';
+import { scheduledStudentsForDate, type RosterVersion } from './datedRoster';
 import { CollapsiblePanel } from './CollapsiblePanel';
 import { AuditLog } from './AuditLog';
 import { rosterRows, rosterCsv, rosterHtml, rosterExcel } from './rosterExport';
@@ -124,6 +125,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
   const [selected, setSelected] = useState((pb.authStore.model as User | null)?.role === 'clc_admin' ? 'all' : '');
   const [classrooms, setClassrooms] = useState<Row[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [scheduleHistory, setScheduleHistory] = useState<RosterVersion[]>([]);
   const [subs, setSubs] = useState<Row[]>([]);
   const [menuDays, setMenuDays] = useState<MenuDay[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -167,10 +169,11 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
     setBusy(true); setError('');
     try {
       await pb.send('/api/student-lifecycle', { method: 'GET', requestKey: null });
-      const [locations, rooms, kids, replacements, menus, items] = await Promise.all([
+      const [locations, rooms, kids, versions, replacements, menus, items] = await Promise.all([
         pb.collection('daycares').getFullList<Daycare>({ sort: 'name', requestKey: null }),
         pb.collection('classrooms').getFullList({ sort: 'name', requestKey: null }),
         pb.collection('students').getFullList<Student>({ sort: 'name', requestKey: null }),
+        pb.collection('schedule_history').getFullList<RosterVersion>({ sort: 'effective_date', requestKey: null }),
         pb.collection('substitutions').getFullList({ sort: 'service_date', requestKey: null }),
         pb.collection('menu_days').getFullList<MenuDay>({ sort: 'service_date', requestKey: null }),
         ...(isClc ? [pb.collection('menu_items').getFullList<MenuItem>({ sort: 'name', requestKey: null })] : [Promise.resolve([])]),
@@ -179,6 +182,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
       setDaycares(locations);
       setClassrooms(rooms);
       setStudents(kids.map((k) => ({ ...k, service_days: Array.isArray(k.service_days) ? k.service_days : [] })));
+      setScheduleHistory(versions);
       setSubs(replacements); setMenuDays(menus); setMenuItems(items);
       setSelected((previous) => {
         if (user.role !== 'clc_admin') return locations.some((school) => school.id === user.daycare) ? user.daycare : '';
@@ -229,7 +233,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
     }
     catch (e) { setError(message(e)); }
   }
-  function signOut() { loadVersion.current++; pb.authStore.clear(); setSelected(''); setDaycares([]); setClassrooms([]); setStudents([]); setSubs([]); setMenuDays([]); setMenuItems([]); setBusy(false); setError(''); }
+  function signOut() { loadVersion.current++; pb.authStore.clear(); setSelected(''); setDaycares([]); setClassrooms([]); setStudents([]); setScheduleHistory([]); setSubs([]); setMenuDays([]); setMenuItems([]); setBusy(false); setError(''); }
 
   const operationsAvailable = isClc || Boolean(current?.operations_enabled);
   const substitutionsAvailable = Boolean(current?.allow_substitutions);
@@ -310,7 +314,7 @@ function AdminApp({ superAdminOnly = false, schoolSlug = '' }: { superAdminOnly?
         </div></CollapsiblePanel>}
 </section>}
       {tab === 'invoices' && <InvoicesPage key={selected} schools={daycares} isClc={isClc} currentId={selected === 'all' ? '' : selected} />}
-      {tab === 'summary' && isClc && <section className="page-stack"><PageTitle title="Weekly Summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print Landscape Summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} subs={subs} /><DatedKitchenCounts schools={daycares.filter((d) => selected === 'all' || d.id === selected)} /></section>}
+      {tab === 'summary' && isClc && <section className="page-stack"><PageTitle title="Weekly Summary" subtitle="Recurring weekday counts in a kitchen sheet. Use the monthly menu printout alongside it." /><div className="toolbar"><button className="primary" onClick={() => window.print()}>Print Landscape Summary</button></div><WeeklySummary locations={daycares.filter((d) => selected === 'all' || d.id === selected)} students={students} history={scheduleHistory} subs={subs} /><DatedKitchenCounts schools={daycares.filter((d) => selected === 'all' || d.id === selected)} /></section>}
       {tab === 'menu' && !isClc && current && <PublicMenu slug={current.public_slug} embedded />}
       {tab === 'overview' && isClc && <MenuOverview daycares={daycares} menuDays={menuDays} month={month} setMonth={setMonth} />}
       {tab === 'menu' && isClc && <MenuPage menuItems={menuItems} current={selectableDaycare} daycares={daycares} month={month} setMonth={setMonth} menuDays={menuDays} onRefreshMenus={refreshMenus} onMenusSaved={mergeMenus} error={setError} />}
@@ -353,9 +357,9 @@ function SubstitutionNames({ rows, students, school }: { rows: Row[]; students: 
   return <>{rows.map((r, i) => <span className="summary-substitution" key={r.id}>{i > 0 && '  -  '}{shortStudentName(students.find((student) => student.id === r.student)?.name || 'Student')}: <strong className="substitution-code">{substitutionName(school, r.code)}</strong></span>)}</>;
 }
 
-function WeeklySummary({ locations, students, subs }: { locations: Daycare[]; students: Student[]; subs: Row[] }) {
+function WeeklySummary({ locations, students, history, subs }: { locations: Daycare[]; students: Student[]; history: RosterVersion[]; subs: Row[] }) {
   const data = locations.map((school) => ({ school, days: weekdays.map((day) => {
-    const roster = school.count_mode === 'manual' ? [] : students.filter((s) => studentScheduled(s, weekDates(new Date())[weekdays.indexOf(day)]) && s.daycare === school.id && s.service_days.includes(day));
+    const roster = school.count_mode === 'manual' ? [] : scheduledStudentsForDate(students, history, school.id, day, weekDates(new Date())[weekdays.indexOf(day)]);
     const replacements = subs.filter((sub) => sub.daycare === school.id && sub.recurring && sub.weekday === day && roster.some((s) => s.id === sub.student));
     const managed = school.count_mode === 'manual' ? Number(school.clc_managed_counts?.[day] || 0) : 0;
     const total = school.count_mode === 'manual' ? Number(school.baseline_counts?.[day] || 0) + managed : roster.length;
