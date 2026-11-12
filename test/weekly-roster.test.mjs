@@ -51,3 +51,70 @@ test('current student names are consistent across dated attendance and linked on
  assert.equal(out.days[1].total,0);assert.equal(f.d.history[1].snapshot.name,'Leo Stern (veg)');
  f.app.findRecordsByFilter=type=>type==='students'?[]:original(type);const past=f.l.build(f.app,f.school,'2026-10-15');assert.equal(past.days[0].classrooms[0].students[0].name,'Leo Stern (veg)');
 });
+
+test('Bergenfield live-data printout has summary first, consistent compact tables and natural page breaks',()=>{
+ const days=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+ const data={
+   school_name:'Lightbridge Bergenfield',start:'2026-11-09',end:'2026-11-13',as_of:'2026-11-12',
+   days:days.map((day,index)=>({day,closed:false,total:[25,24,26,24,36][index],
+     classrooms:[
+       {name:'Mobile Infants',total:index===4?1:2,students:[{name:'Gia',sub:false}]},
+       {name:'Goldfish',total:index===4?9:5,students:index===4?
+         [{name:'Ade',sub:false},{name:'Amjad',sub:false},{name:'Andres',sub:false},{name:'Derek M',sub:false},
+         {name:'Ethan',sub:false},{name:'Lucas',sub:false},{name:'Margo',sub:false},{name:'Oliver',sub:false},{name:'Starling',sub:false}]:
+         [{name:'Andres',sub:true},{name:'Ethan',sub:false}]},
+       {name:'Yellow Ducks',total:index===4?8:3,students:[{name:'Leo (veg)',sub:index<4}]},
+     ]})),
+ };
+ data.days[0].classrooms[0].students.push({name:'Amenze <A>',sub:false});
+ const html=weeklyRosterHtml(data);
+ assert.match(html,/letter portrait/);
+ assert.match(html,/roster-matrix/);
+ assert.ok(!html.includes('class="matrix-page"'),'No artificial three-classrooms-per-page partitions');
+ assert.ok(!html.includes('Page 1 / 3'),'No hardcoded page numbers');
+ assert.ok(html.indexOf('class="matrix-summary"')<html.indexOf('class="matrix-room"'),'Summary is at top of printout');
+ assert.equal((html.match(/class="matrix-room"/g)||[]).length,8,'Each classroom is its own unbreakable table');
+ assert.ok(html.indexOf('Mobile Infants')<html.indexOf('Purple Cats'));
+ assert.ok(html.indexOf('Purple Cats')<html.indexOf('Khaki Kangaroo'));
+ assert.ok(html.indexOf('Khaki Kangaroo')<html.indexOf('Yellow Ducks'));
+ assert.ok(html.indexOf('Goldfish')<html.indexOf('Brown Bears'));
+ assert.match(html,/<th scope="col">Monday<\/th><th scope="col">Tuesday<\/th><th scope="col">Wednesday<\/th><th scope="col">Thursday<\/th><th scope="col">Friday<\/th>/);
+ assert.match(html,/class="matrix-total"/);
+ assert.match(html,/color:#bb2a27/);
+ assert.match(html,/class="matrix-grand-total"/);
+ assert.match(html,/Daily Total<\/th><td>25<\/td><td>24<\/td><td>26<\/td><td>24<\/td><td>36<\/td><td>135<\/td>/);
+ assert.match(html,/Leo \(veg\)/);
+ assert.match(html,/\(Sub\)/);
+ assert.match(html,/&lt;A&gt;/);
+ assert.ok(!html.includes('Amenze <A>'),'Escaping must apply in the new matrix');
+ assert.ok(!html.includes('(2)')&&!html.includes('(3)'),'No internal pizza-slice markers');
+ assert.match(html,/9<\/td>/,'Goldfish Friday total must be displayed');
+ assert.match(html,/8<\/td>/,'Yellow Ducks Friday total must be displayed');
+ assert.match(html,/break-inside:avoid;page-break-inside:avoid/,'No classroom may be split over a page');
+ assert.ok(!/break-after:page;page-break-after:always/.test(html),'Do not force page breaks between groups');
+ assert.match(html,/\.roster-matrix \.matrix-grid tbody td\{font-size:10\.6px/);
+ assert.match(html,/\.roster-matrix \.matrix-summary-table tbody td\{font-size:10\.5px/);
+ const roomSections=[...html.matchAll(/<section class="matrix-room">[\s\S]*?<\/section>/g)].map(match=>match[0]);
+ const mobile=roomSections.find(section=>section.includes('>Mobile Infants</th>'));
+ assert.ok(mobile);
+ assert.equal((mobile.match(/<tr>/g)||[]).length,4,'Only two body rows and two heading rows; no blank padding');
+ assert.equal((mobile.match(/class="matrix-total"/g)||[]).length,1,'One total row at bottom');
+ const goldfish=roomSections.find(section=>section.includes('>Goldfish</th>'));
+ assert.ok(goldfish);
+ assert.equal((goldfish.match(/<tr>/g)||[]).length,11,'Nine student rows and two heading rows');
+ assert.equal((goldfish.match(/class="matrix-total"/g)||[]).length,1,'One total row at bottom');
+ const app=fs.readFileSync(new URL('../frontend/src/WeeklyRoster.tsx',import.meta.url),'utf8');
+ assert.match(app,/matrix-preview/,'Live in-app preview uses the same sizing');
+});
+
+test('Bergenfield closed days and schools with zero lunches keep zero counts without fabricated names',()=>{
+ const days=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+ const data={school_name:'Lightbridge Bergenfield',start:'2026-11-09',end:'2026-11-13',as_of:'2026-11-12',
+   days:days.map((day,index)=>({day,closed:index===2,total:index===2?0:1,
+     classrooms:index===2?[]:[{name:'Purple Cats',total:1,students:[{name:'Ethan',sub:false}]}]}))};
+ const html=weeklyRosterHtml(data);
+ assert.match(html,/No lunch service/);
+ assert.match(html,/Daily Total<\/th><td>1<\/td><td>1<\/td><td>0<\/td><td>1<\/td><td>1<\/td><td>4<\/td>/);
+ assert.equal((html.match(/class="matrix-room"/g)||[]).length,8);
+ assert.match(html,/class="matrix-grand-total"/);
+});
