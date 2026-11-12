@@ -45,6 +45,25 @@ function existingCandidate(rows,roomId,key,used){
   return null;
 }
 function changed(a,b){return JSON.stringify(a)!==JSON.stringify(b);}
+// Explicitly upsert the effective-dated snapshot so a migration remains correct
+// even if PocketBase runs it before record hooks have been registered.
+function saveStudent(app,row,schoolId){
+  app.save(row);
+  const found=app.findRecordsByFilter('schedule_history',
+    'daycare = {:school} && entity = {:entity} && effective_date = {:date}','',1,0,
+    {school:schoolId,entity:row.id,date:effective});
+  const version=found[0]||new Record(app.findCollectionByNameOrId('schedule_history'));
+  const snapshot={
+    name:row.getString('name'),classroom:row.getString('classroom'),
+    active:row.getBool('active'),service_days:JSON.parse(row.getString('service_days')||'[]'),
+    size:row.getString('size'),last_lunch_date:row.getString('last_lunch_date'),
+  };
+  version.set('daycare',schoolId);
+  version.set('entity',row.id);
+  version.set('effective_date',effective);
+  version.set('snapshot',snapshot);
+  app.save(version);
+}
 migrate(app=>{
   const found=app.findRecordsByFilter('daycares','public_slug = {:slug}','',1,0,{slug:'lightbridge-bergenfield'});
   if(!found.length)return; // A local database may not contain this school.
@@ -53,7 +72,6 @@ migrate(app=>{
   const rooms=app.findRecordsByFilter('classrooms','daycare = {:id}','',0,0,{id:school.id});
   const all=app.findRecordsByFilter('students','daycare = {:id}','',0,0,{id:school.id});
   const collection=app.findCollectionByNameOrId('students');
-  const audit=require(__hooks+'/audit-lib.js');
   const used=new Set();
   for(const [roomName,list] of Object.entries(roster)){
     const room=findRoom(rooms,roomName);
@@ -81,7 +99,7 @@ migrate(app=>{
         row.set('active',true);
         row.set('service_days',days);
         row.set('billing_effective_date',effective);
-        audit.save(app,row,null); // Uses the normal schedule-history/audit hooks.
+        saveStudent(app,row,school.id); // Persist the Nov 13 schedule snapshot.
       }
       used.add(row.id);
       if(fresh)all.push(row);
@@ -102,7 +120,7 @@ migrate(app=>{
       if(!row.getString('last_lunch_date')||row.getString('last_lunch_date')>previous)
         row.set('last_lunch_date',previous);
     }
-    audit.save(app,row,null);
+    saveStudent(app,row,school.id);
   }
 },_app=>{
   // Historical schedule and financial changes must not be rolled back by code deployment.
