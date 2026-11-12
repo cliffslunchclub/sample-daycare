@@ -140,3 +140,68 @@ test('Bergenfield printer keeps title, footer and classroom tables in non-overla
  // placed on top of an unrelated classroom.
  assert.doesNotMatch(print,/break-after:page;page-break-after:always/);
 });
+
+
+test('Bergenfield weekly summary uses current saved students for every weekday, not Monday historical Ethan',()=>{
+ const school=row('bf',{name:'Lightbridge Bergenfield',public_slug:'lightbridge-bergenfield'});
+ const fullWeek=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+ const history=[
+  {entity:'school',effective_date:'2026-11-01',snapshot:{count_mode:'roster',invoice_rate:4}},
+  {entity:'purpleEthan',effective_date:'2026-11-01',snapshot:{name:'Ethan',active:true,classroom:'purple',service_days:fullWeek}},
+  {entity:'goldEthan',effective_date:'2026-11-01',snapshot:{name:'Ethan',active:true,classroom:'gold',service_days:fullWeek}},
+  {entity:'newStudent',effective_date:'2026-11-12',snapshot:{name:'Amjad',active:true,classroom:'gold',service_days:fullWeek}},
+  {entity:'pastStudent',effective_date:'2026-11-01',snapshot:{name:'Eddie',active:true,classroom:'purple',service_days:fullWeek}},
+ ];
+ const d={school:{public_slug:'lightbridge-bergenfield'},history,menus:[],requests:[
+  {kind:'lunch',status:'approved',student:'',student_label:'Margo',classroom_label:'Purple Cats',service_date:'2026-11-09',code:'A'},
+  {kind:'lunch',status:'pending',student:'',student_label:'Unapproved',classroom_label:'Purple Cats',service_date:'2026-11-09',code:'A'},
+ ]};
+ const app={findRecordsByFilter:type=>type==='classrooms'?
+  [row('purple',{name:'Purple Cats',age_order:1}),row('gold',{name:'Goldfish',age_order:2})]:
+  type==='students'?[
+   row('purpleEthan',{name:'Ethan',classroom:'purple',active:true,service_days:['Tuesday','Wednesday','Thursday','Friday']}),
+   row('goldEthan',{name:'Ethan',classroom:'gold',active:true,service_days:fullWeek}),
+   row('newStudent',{name:'Amjad',classroom:'gold',active:true,service_days:fullWeek,billing_effective_date:'2026-11-12'}),
+   row('pastStudent',{name:'Eddie',classroom:'purple',active:true,last_lunch_date:'2026-11-11',service_days:fullWeek}),
+  ]:
+  type==='substitutions'?[row('sub',{student:'purpleEthan',service_date:'2026-11-01',weekday:'Tuesday',recurring:true,code:'V'})]:
+  type==='audit_logs'?[]:[]};
+ const l=load('weekly-roster-lib.js',{__hooks:'hooks',require:p=>p.endsWith('billing-lib.js')?billing:{data:()=>d}});
+ // Billing remains based on the dated Nov 1 schedule and is not changed by the
+ // operational report's use of current records.
+ assert.equal(billing.daily(d.school,d.history,[],'2026-11-09').quantity,3);
+ const result=l.build(app,school,'2026-11-12');
+ const monday=result.days.find(day=>day.day==='Monday');
+ const tuesday=result.days.find(day=>day.day==='Tuesday');
+ assert.equal(monday.total,3,'Two current Goldfish plus one approved Margo one-off');
+ assert.equal(monday.classrooms.find(c=>c.name==='Purple Cats').total,1);
+ assert.deepEqual(monday.classrooms.find(c=>c.name==='Purple Cats').students.map(s=>s.name),['Margo']);
+ assert.deepEqual(monday.classrooms.find(c=>c.name==='Goldfish').students.map(s=>s.name),['Amjad','Ethan']);
+ assert.equal(tuesday.total,3,'The current Tuesday schedule includes both Ethans and Amjad');
+ assert.equal(tuesday.classrooms.find(c=>c.name==='Purple Cats').total,1);
+ assert.equal(tuesday.classrooms.find(c=>c.name==='Purple Cats').students[0].sub,true);
+ assert.equal(result.days.find(day=>day.day==='Friday').total,3);
+ assert.equal(d.history.find(h=>h.entity==='purpleEthan').snapshot.service_days.length,5,'Invoice history untouched');
+ const html=weeklyRosterHtml(result);
+ assert.match(html,/CLASSROOM DAILY TOTALS/);
+ assert.match(html,/Margo/);
+ assert.match(html,/Amjad/);
+ assert.doesNotMatch(html,/Unapproved/);
+});
+
+test('Bergenfield current roster excludes fully inactive students and keeps dated one-off requests and closures',()=>{
+ const school=row('bf',{name:'Lightbridge Bergenfield',public_slug:'lightbridge-bergenfield'});
+ const history=[
+  {entity:'school',effective_date:'2026-11-01',snapshot:{count_mode:'roster',invoice_rate:4}},
+  {entity:'old',effective_date:'2026-11-01',snapshot:{name:'Old',active:true,classroom:'purple',service_days:['Monday','Wednesday','Friday']}},
+ ];
+ const d={school:{public_slug:'lightbridge-bergenfield'},history,menus:[{service_date:'2026-11-11',closed:true}],requests:[]};
+ const app={findRecordsByFilter:type=>type==='classrooms'?[row('purple',{name:'Purple Cats',age_order:1})]:
+  type==='students'?[row('old',{name:'Old',active:false,classroom:'purple',service_days:['Monday','Wednesday','Friday']})]:[]};
+ const l=load('weekly-roster-lib.js',{__hooks:'hooks',require:p=>p.endsWith('billing-lib.js')?billing:{data:()=>d}});
+ const result=l.build(app,school,'2026-11-12');
+ assert.equal(result.days[0].total,0,'Archived current DB student omitted from past Monday column');
+ assert.equal(result.days[2].total,0);
+ assert.equal(result.days[2].closed,true);
+ assert.equal(result.days[4].total,0);
+});
