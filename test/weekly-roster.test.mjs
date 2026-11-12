@@ -97,10 +97,12 @@ test('Bergenfield live-data printout has summary first, consistent compact table
  const roomSections=[...html.matchAll(/<section class="matrix-room">[\s\S]*?<\/section>/g)].map(match=>match[0]);
  const mobile=roomSections.find(section=>section.includes('>Mobile Infants</th>'));
  assert.ok(mobile);
- assert.equal((mobile.match(/<tr>/g)||[]).length,5,'Only two body rows, two heading rows and one total row; no blank padding');
+ assert.equal((mobile.match(/<tr>/g)||[]).length,4,'Only two body rows and two heading rows; no blank padding');
+ assert.equal((mobile.match(/class="matrix-total"/g)||[]).length,1,'One total row at bottom');
  const goldfish=roomSections.find(section=>section.includes('>Goldfish</th>'));
  assert.ok(goldfish);
- assert.equal((goldfish.match(/<tr>/g)||[]).length,12,'Nine student rows, two heading rows and one total');
+ assert.equal((goldfish.match(/<tr>/g)||[]).length,11,'Nine student rows and two heading rows');
+ assert.equal((goldfish.match(/class="matrix-total"/g)||[]).length,1,'One total row at bottom');
  const app=fs.readFileSync(new URL('../frontend/src/WeeklyRoster.tsx',import.meta.url),'utf8');
  assert.match(app,/matrix-preview/,'Live in-app preview uses the same sizing');
 });
