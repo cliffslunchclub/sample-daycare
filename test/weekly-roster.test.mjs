@@ -51,3 +51,39 @@ test('current student names are consistent across dated attendance and linked on
  assert.equal(out.days[1].total,0);assert.equal(f.d.history[1].snapshot.name,'Leo Stern (veg)');
  f.app.findRecordsByFilter=type=>type==='students'?[]:original(type);const past=f.l.build(f.app,f.school,'2026-10-15');assert.equal(past.days[0].classrooms[0].students[0].name,'Leo Stern (veg)');
 });
+
+test('Bergenfield printout follows the original classroom-by-weekday matrix, with red bottom totals',()=>{
+ const days=['Monday','Tuesday','Wednesday','Thursday','Friday'];
+ const data={
+   school_name:'Lightbridge Bergenfield',start:'2026-11-09',end:'2026-11-13',as_of:'2026-11-12',
+   days:days.map((day,index)=>({day,closed:false,total:[25,24,26,24,36][index],
+     classrooms:[
+       {name:'Mobile Infants',total:index===4?1:2,students:[{name:'Gia',sub:false}]},
+       {name:'Goldfish',total:index===4?9:5,students:index===4?
+         [{name:'Ade',sub:false},{name:'Amjad',sub:false},{name:'Andres',sub:false},{name:'Derek M',sub:false},
+         {name:'Ethan',sub:false},{name:'Lucas',sub:false},{name:'Margo',sub:false},{name:'Oliver',sub:false},{name:'Starling',sub:false}]:
+         [{name:'Andres',sub:true},{name:'Ethan',sub:false}]},
+       {name:'Yellow Ducks',total:index===4?8:3,students:[{name:'Leo (veg)',sub:index<4}]},
+     ]})),
+ };
+ data.days[0].classrooms[0].students.push({name:'Amenze <A>',sub:false});
+ const html=weeklyRosterHtml(data);
+ assert.match(html,/letter portrait/);
+ assert.match(html,/matrix-page/);
+ assert.equal((html.match(/class="matrix-page"/g)||[]).length,3,'Original is three portrait pages, three/three/two classrooms');
+ assert.equal((html.match(/class="matrix-room"/g)||[]).length,8,'One classroom block per room rather than one per day');
+ assert.ok(html.indexOf('Mobile Infants')<html.indexOf('Purple Cats'));
+ assert.ok(html.indexOf('Purple Cats')<html.indexOf('Khaki Kangaroo'));
+ assert.ok(html.indexOf('Khaki Kangaroo')<html.indexOf('Yellow Ducks'));
+ assert.ok(html.indexOf('Goldfish')<html.indexOf('Brown Bears'));
+ assert.match(html,/<th>Monday<\/th><th>Tuesday<\/th><th>Wednesday<\/th><th>Thursday<\/th><th>Friday<\/th>/);
+ assert.match(html,/class="matrix-total"/);
+ assert.match(html,/color:#c52b28/);
+ assert.match(html,/Leo \(veg\)/);
+ assert.match(html,/\(Sub\)/);
+ assert.match(html,/&lt;A&gt;/);
+ assert.ok(!html.includes('Amenze <A>'),'Escaping must apply in the new matrix');
+ assert.ok(!html.includes('(2)')&&!html.includes('(3)'),'Do not add internal pizza markers');
+ assert.match(html,/9<\/td>/,'Goldfish Friday total must be shown');
+ assert.match(html,/8<\/td>/,'Yellow Ducks Friday total must be shown');
+});
