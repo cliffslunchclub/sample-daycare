@@ -43,15 +43,28 @@ test('dated migration retains old snapshots and student IDs, moves students and 
   ];
   const prior=students.map(s=>({id:s.id,effective_date:'2026-11-01',snapshot:{name:s.data.name,active:s.data.active,service_days:[...s.data.service_days],classroom:s.data.classroom}}));
   const history=[...prior];
+  const storedVersions=[];
   const app={
-    findRecordsByFilter(table){if(table==='daycares')return [school];if(table==='classrooms')return rooms;if(table==='students')return [...students];throw Error('bad collection')},
+    findRecordsByFilter(table,_filter,_sort,_limit,_offset,params){
+      if(table==='daycares')return [school];
+      if(table==='classrooms')return rooms;
+      if(table==='students')return [...students];
+      if(table==='schedule_history')return storedVersions.filter(v=>v.data.entity===params.entity&&v.data.effective_date===params.date&&v.data.daycare===params.school);
+      throw Error('bad collection');
+    },
     findCollectionByNameOrId(name){return {name}},
-    save(){},
+    save(row){
+      if(row.data.entity&&row.data.snapshot){
+        if(!storedVersions.includes(row))storedVersions.push(row);
+        const state=history.find(v=>v.id===row.id);
+        if(!state)history.push({id:row.id,effective_date:row.data.effective_date,snapshot:row.data.snapshot});
+        else {state.effective_date=row.data.effective_date;state.snapshot=row.data.snapshot;}
+      }else if(row.data.daycare==='bf'&&row.data.name&&!students.includes(row))students.push(row);
+    },
   };
-  const audit={save(_app,row){if(!students.includes(row))students.push(row);history.push({id:row.id,effective_date:row.getString('billing_effective_date'),snapshot:{name:row.getString('name'),active:row.getBool('active'),service_days:JSON.parse(row.getString('service_days')||'[]'),classroom:row.getString('classroom'),last_lunch_date:row.getString('last_lunch_date')}});}};
   let up;
   class Record{constructor(){return record('new'+(++next),{})}}
-  vm.runInNewContext(migration,{migrate(fn){up=fn},Record,__hooks:'hooks',require(){return audit;}});
+  vm.runInNewContext(migration,{migrate(fn){up=fn},Record});
   up(app);
   assert.equal(students.find(s=>s.id==='ade').data.classroom,rid('Goldfish'));
   assert.equal(students.find(s=>s.id==='oliver').data.classroom,rid('Goldfish'));
