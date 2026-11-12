@@ -94,10 +94,11 @@ test('Bergenfield live-data printout has summary first, consistent compact table
  assert.ok(!/break-after:page;page-break-after:always/.test(html),'Do not force page breaks between groups');
  assert.match(html,/\.roster-matrix \.matrix-grid tbody td\{font-size:10\.6px/);
  assert.match(html,/\.roster-matrix \.matrix-summary-table tbody td\{font-size:10\.5px/);
- const mobile=html.match(/<section class="matrix-room"><table class="matrix-grid">[\s\S]*?Mobile Infants[\s\S]*?<\/section>/)?.[0];
+ const roomSections=[...html.matchAll(/<section class="matrix-room">[\s\S]*?<\/section>/g)].map(match=>match[0]);
+ const mobile=roomSections.find(section=>section.includes('>Mobile Infants</th>'));
  assert.ok(mobile);
  assert.equal((mobile.match(/<tr>/g)||[]).length,5,'Only two body rows, two heading rows and one total row; no blank padding');
- const goldfish=html.match(/<section class="matrix-room"><table class="matrix-grid">[\s\S]*?Goldfish[\s\S]*?<\/section>/)?.[0];
+ const goldfish=roomSections.find(section=>section.includes('>Goldfish</th>'));
  assert.ok(goldfish);
  assert.equal((goldfish.match(/<tr>/g)||[]).length,12,'Nine student rows, two heading rows and one total');
  const app=fs.readFileSync(new URL('../frontend/src/WeeklyRoster.tsx',import.meta.url),'utf8');
